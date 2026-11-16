@@ -53,126 +53,193 @@ html, body, [class*="css"], .stApp, button, input, textarea, select {
     font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
 
-/* ---------- Nền & khung ---------- */
+/* ---------- Nền & khung (Warm Peach-to-Aqua Spatial Glass) ---------- */
 .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
     background:
-        radial-gradient(circle at 4% 8%, rgba(99,102,241,.12) 0%, transparent 42%),
-        radial-gradient(circle at 96% 6%, rgba(236,72,153,.12) 0%, transparent 42%),
-        radial-gradient(circle at 92% 94%, rgba(245,158,11,.10) 0%, transparent 42%),
-        radial-gradient(circle at 6% 92%, rgba(16,185,129,.11) 0%, transparent 42%),
-        #F5F7FC !important;
-    color: #1E293B;
+        radial-gradient(circle at 8% 12%, rgba(251,146,60,.16) 0%, transparent 40%),
+        radial-gradient(circle at 92% 14%, rgba(56,189,248,.18) 0%, transparent 42%),
+        radial-gradient(circle at 82% 88%, rgba(45,212,191,.15) 0%, transparent 42%),
+        radial-gradient(circle at 14% 88%, rgba(244,114,182,.12) 0%, transparent 42%),
+        #F3F7FB !important;
+    color: #0F172A;
 }
 header[data-testid="stHeader"] { display: none !important; }
 
 .main .block-container, [data-testid="stMainBlockContainer"] {
-    background: #FFFFFF;
-    border-radius: 32px;
-    border: 1px solid rgba(226,232,240,.8);
-    box-shadow: 0 20px 60px rgba(99,102,241,.06), 0 2px 10px rgba(0,0,0,.02);
-    padding: 34px 42px 44px 42px !important;
-    margin: 20px auto 28px auto;
-    max-width: 96% !important;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    border-radius: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.06), 0 2px 12px rgba(15, 23, 42, 0.03);
+    padding: 26px 34px 40px 34px !important;
+    margin: 18px auto 26px auto;
+    max-width: 97% !important;
 }
 
 /* ---------- Hiệu ứng chuyển động mượt ---------- */
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-[class*="st-key-card"], .kpi-card, .hero-card, .phase-bar, .page-header { animation: fadeUp .35s ease-out both; }
+[class*="st-key-card"], .kpi-card, .hero-glass, .phase-bar, .top-glass-bar { animation: fadeUp .32s ease-out both; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
-/* ---------- Sidebar ---------- */
+/* ---------- Dark Frosted Glass Sidebar ---------- */
 [data-testid="stSidebar"] { background: transparent !important; border-right: none !important; }
 [data-testid="stSidebarContent"] {
-    background: #FFFFFF !important;
-    border-radius: 28px;
-    margin: 20px 0 20px 18px;
-    padding: 22px 16px;
-    border: 1px solid rgba(226,232,240,.8);
-    box-shadow: 0 16px 48px rgba(99,102,241,.06);
-    height: calc(100vh - 40px);
+    background: linear-gradient(180deg, rgba(58,63,74,.94) 0%, rgba(42,46,56,.96) 100%) !important;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-radius: 26px;
+    margin: 18px 0 18px 16px;
+    padding: 22px 16px 20px 16px;
+    border: 1px solid rgba(255,255,255,.16);
+    box-shadow: 0 24px 54px rgba(15,23,42,.28);
+    height: calc(100vh - 36px);
+    color: #F8FAFC;
 }
-.brand { display: flex; align-items: center; gap: 12px; padding: 4px 4px 18px 4px; border-bottom: 1px solid #F1F4F9; margin-bottom: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; padding: 4px 4px 16px 4px; border-bottom: 1px solid rgba(255,255,255,.10); margin-bottom: 14px; }
 .brand-logo {
-    width: 42px; height: 42px; border-radius: 14px; flex-shrink: 0;
-    background: linear-gradient(135deg, #1E75FF 0%, #7C3AED 55%, #EC4899 100%);
-    display: flex; align-items: center; justify-content: center; font-size: 20px;
-    box-shadow: 0 8px 20px rgba(124,58,237,.30);
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #FB923C 0%, #EA580C 100%);
+    color: #FFFFFF; font-weight: 800; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 18px rgba(234,88,12,.45);
 }
-.brand-title {
-    font-size: 19px; font-weight: 800; letter-spacing: -.4px; line-height: 1.1;
-    background: linear-gradient(135deg, #1E75FF 0%, #7C3AED 60%, #EC4899 100%);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
-.brand-sub { font-size: 11px; font-weight: 700; color: #94A3B8; margin-top: 3px; }
-.nav-caption { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; color: #94A3B8; margin: 6px 6px 8px 6px; }
+.brand-title { font-size: 16px; font-weight: 800; letter-spacing: -.3px; line-height: 1.15; color: #FFFFFF; }
+.brand-sub { font-size: 11px; font-weight: 600; color: #94A3B8; margin-top: 2px; }
+.nav-caption { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #94A3B8; margin: 8px 8px 8px 8px; }
 
-/* ---------- Menu điều hướng: nút chữ nhật bo tròn, active hồng nhạt ---------- */
+/* ---------- Menu điều hướng: nút chữ nhật bo tròn, không icon, active hồng nhạt ---------- */
 [data-testid="stSidebar"] [data-testid="stRadio"] > label { display: none !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] { gap: 6px !important; width: 100%; }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label {
-    background: #FFFFFF !important;
-    border: 1.5px solid #EEF2F6 !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 14px !important;
-    padding: 11px 16px !important;
+    padding: 10px 15px !important;
     margin: 0 !important;
     width: 100% !important;
     box-sizing: border-box;
     cursor: pointer;
-    color: #334155 !important;
+    color: #E2E8F0 !important;
     transition: background .2s ease, border-color .2s ease, transform .2s ease, box-shadow .2s ease;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"],
 [data-testid="stSidebar"] [data-testid="stRadio"] [class*="ex50key4"] { display: none !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
-    font-size: 13.5px !important; font-weight: 600 !important; color: inherit !important; margin: 0 !important;
+    font-size: 13px !important; font-weight: 600 !important; color: inherit !important; margin: 0 !important;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:hover {
-    background: #FFF1F4 !important; border-color: #FECDD3 !important; color: #E11D48 !important; transform: translateX(3px);
+    background: rgba(255, 255, 255, 0.13) !important; border-color: rgba(255, 255, 255, 0.25) !important; color: #FFFFFF !important; transform: translateX(3px);
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
     background: #FFE4E8 !important;
     border: 1.5px solid #FDA4AF !important;
     color: #BE123C !important;
-    box-shadow: 0 6px 16px rgba(244,63,94,.16);
+    box-shadow: 0 8px 20px rgba(244, 63, 94, 0.25);
     transform: translateX(3px);
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p { font-weight: 700 !important; }
 
-/* ---------- Tiến độ trong sidebar ---------- */
-.side-progress { background: #F8FAFD; border: 1px solid #E2E8F0; border-radius: 16px; padding: 12px 14px; margin-top: 16px; }
-.side-progress-title { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; color: #64748B; margin-bottom: 8px; }
-.side-row { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; font-weight: 600; color: #475569; margin-bottom: 6px; }
-.badge { font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 20px; border: 1px solid; white-space: nowrap; }
-.badge.ok { background: #DCFCE7; color: #15803D; border-color: #86EFAC; }
-.badge.warn { background: #FEF3C7; color: #B45309; border-color: #FCD34D; }
-.badge.fail { background: #FEE2E2; color: #B91C1C; border-color: #FCA5A5; }
-.badge.idle { background: #F1F5F9; color: #64748B; border-color: #E2E8F0; }
-
-/* ---------- Header trang ---------- */
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.page-title {
-    font-size: 27px; font-weight: 800; letter-spacing: -.5px; margin: 0; line-height: 1.15;
-    background: linear-gradient(135deg, #1E293B 0%, #4F46E5 100%);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+/* ---------- Tiến độ & Admin card trong dark sidebar ---------- */
+.side-progress {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    padding: 12px 14px;
+    margin-top: 14px;
 }
-.page-sub { font-size: 13px; color: #64748B; font-weight: 500; margin-top: 5px; max-width: 720px; }
+.side-progress-title { font-size: 10px; font-weight: 800; letter-spacing: .9px; color: #94A3B8; margin-bottom: 8px; }
+.side-row { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; font-weight: 600; color: #E2E8F0; margin-bottom: 6px; }
+.side-admin {
+    margin-top: 12px;
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.side-admin-avatar {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #FB923C 0%, #EA580C 100%);
+    color: #FFF; font-weight: 800; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+}
+.side-admin-name { font-size: 12.5px; font-weight: 700; color: #FFFFFF; line-height: 1.2; }
+.side-admin-sub { font-size: 10.5px; color: #CBD5E1; }
+
+.badge { font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 20px; border: 1px solid; white-space: nowrap; }
+.badge.ok { background: rgba(220,252,231,.95); color: #15803D; border-color: #86EFAC; }
+.badge.warn { background: rgba(254,243,199,.95); color: #B45309; border-color: #FCD34D; }
+.badge.fail { background: rgba(254,226,226,.95); color: #B91C1C; border-color: #FCA5A5; }
+.badge.idle { background: rgba(241,245,249,.92); color: #475569; border-color: #CBD5E1; }
+
+/* ---------- Top Glass Bar & Page Header ---------- */
+.top-glass-bar {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    border-radius: 18px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
+}
+.top-ws { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: #0F172A; }
+.top-ws-badge {
+    width: 28px; height: 28px; border-radius: 50%; background: #0F172A; color: #FFF;
+    font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+}
+.top-search {
+    flex: 1; min-width: 220px; max-width: 380px;
+    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;
+    padding: 7px 14px; font-size: 12px; color: #64748B;
+}
+.top-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.agent-pill {
+    background: #ECFDF5; border: 1px solid #A7F3D0; color: #047857;
+    border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 700;
+}
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.page-title { font-size: 24px; font-weight: 800; letter-spacing: -.4px; margin: 0; line-height: 1.15; color: #0F172A; }
+.page-sub { font-size: 13px; color: #64748B; font-weight: 500; margin-top: 4px; max-width: 720px; }
 .header-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .source-chip {
     background: #F0F9FF; border: 1px solid #BAE6FD; color: #0369A1; border-radius: 20px;
-    padding: 7px 14px; font-size: 11.5px; font-weight: 700; max-width: 340px;
+    padding: 6px 13px; font-size: 11.5px; font-weight: 700; max-width: 320px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.profile-chip { display: flex; align-items: center; gap: 9px; background: #F8FAFD; border: 1px solid #E2E8F0; border-radius: 24px; padding: 5px 14px 5px 5px; }
+.profile-chip { display: flex; align-items: center; gap: 8px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; padding: 4px 12px 4px 4px; }
 .avatar {
-    width: 32px; height: 32px; border-radius: 50%; color: #FFF; font-weight: 800; font-size: 12px;
-    background: linear-gradient(135deg, #FF5E62 0%, #FF9966 100%);
-    display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(255,94,98,.3);
+    width: 30px; height: 30px; border-radius: 50%; color: #FFF; font-weight: 800; font-size: 11.5px;
+    background: linear-gradient(135deg, #FB923C 0%, #EA580C 100%);
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(234,88,12,.28);
 }
-.p-name { font-size: 12px; font-weight: 800; color: #1E293B; line-height: 1.2; }
+.p-name { font-size: 12px; font-weight: 800; color: #0F172A; line-height: 1.2; }
 .p-role { font-size: 10px; font-weight: 600; color: #64748B; }
 
+/* ---------- Nút Primary màu cam đặc trưng theo thiết kế mẫu ---------- */
+button[kind="primary"], [data-testid="baseButton-primary"] {
+    background: linear-gradient(135deg, #F97316 0%, #EA580C 100%) !important;
+    border: none !important;
+    border-radius: 14px !important;
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+    box-shadow: 0 8px 20px rgba(234, 88, 12, 0.25) !important;
+}
+button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+}
+button[kind="secondary"], [data-testid="baseButton-secondary"] {
+    border-radius: 14px !important;
+    border: 1.5px solid #E2E8F0 !important;
+    background: rgba(255, 255, 255, 0.92) !important;
+    font-weight: 600 !important;
+}
+
 /* ---------- Thanh tiến trình 5 giai đoạn ---------- */
-.phase-bar { display: flex; align-items: center; background: #F8FAFD; border: 1px solid #EEF2F7; border-radius: 18px; padding: 12px 18px; margin-bottom: 24px; gap: 6px; overflow-x: auto; }
+.phase-bar { display: flex; align-items: center; background: rgba(255,255,255,0.78); border: 1px solid #E2E8F0; border-radius: 16px; padding: 11px 18px; margin-bottom: 18px; gap: 6px; overflow-x: auto; }
 .phase { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #94A3B8; white-space: nowrap; }
 .phase-dot { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: #FFFFFF; border: 2px solid #CBD5E1; color: #94A3B8; }
 .phase.done { color: #047857; } .phase.done .phase-dot { background: #10B981; border-color: #10B981; color: #FFF; }
@@ -183,23 +250,55 @@ header[data-testid="stHeader"] { display: none !important; }
 
 /* ---------- Card container (st.container key="card_...") ---------- */
 [class*="st-key-card"] {
-    background: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 24px;
     padding: 22px 24px;
-    box-shadow: 0 6px 22px rgba(99,102,241,.05);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
-.card-title { font-size: 16.5px; font-weight: 800; color: #1E293B; margin: 0; letter-spacing: -.2px; }
+.card-title { font-size: 16.5px; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -.2px; }
 .card-sub { font-size: 12.5px; color: #64748B; margin: 3px 0 12px 0; }
 
-/* ---------- Hero ---------- */
-.hero-card {
-    border-radius: 24px; padding: 28px 30px; margin-bottom: 18px; color: #FFFFFF;
-    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #EC4899 100%);
-    box-shadow: 0 16px 40px rgba(99,102,241,.28);
+/* ---------- Hero Glass 2 cột theo ảnh mẫu ---------- */
+.hero-glass {
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.96);
+    border-radius: 26px;
+    padding: 24px 28px;
+    margin-bottom: 18px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
 }
-.hero-card h2 { font-size: 24px; font-weight: 800; margin: 0 0 8px 0; color: #FFF; letter-spacing: -.3px; }
-.hero-card p { font-size: 13.5px; margin: 0; opacity: .92; line-height: 1.6; color: #FFF; }
+.hero-tag {
+    display: inline-block; background: #FFF7ED; border: 1px solid #FED7AA; color: #C2410C;
+    font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-bottom: 10px;
+}
+.hero-h1 { font-size: 28px; font-weight: 800; color: #0F172A; line-height: 1.15; margin: 0 0 10px 0; letter-spacing: -.5px; }
+.hero-h1 span { color: #F97316; }
+.hero-desc { font-size: 13px; color: #475569; line-height: 1.6; margin: 0; }
+.mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.mini-stat {
+    background: #FFFFFF; border-radius: 18px; padding: 14px 14px; border: 1.5px solid #E2E8F0;
+    box-shadow: 0 6px 16px rgba(15,23,42,.03);
+}
+.mini-stat.green { border-color: #BBF7D0; background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%); }
+.mini-stat.orange { border-color: #FED7AA; background: linear-gradient(180deg, #FFF7ED 0%, #FFFFFF 100%); }
+.mini-stat.amber { border-color: #FDE68A; background: linear-gradient(180deg, #FEFCE8 0%, #FFFFFF 100%); }
+.mini-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 10.5px; font-weight: 800; }
+.mini-pill { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 800; }
+.mini-stat.green .mini-pill { background: #DCFCE7; color: #15803D; }
+.mini-stat.orange .mini-pill { background: #FFEDD5; color: #C2410C; }
+.mini-stat.amber .mini-pill { background: #FEF3C7; color: #B45309; }
+.mini-lbl { font-size: 11px; font-weight: 700; color: #334155; }
+.mini-num { font-size: 24px; font-weight: 800; color: #0F172A; margin: 4px 0 2px 0; line-height: 1.1; }
+.mini-stat.orange .mini-num { color: #EA580C; }
+.mini-foot { font-size: 10.5px; font-weight: 600; color: #64748B; }
+.hero-summary-bar {
+    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 16px; padding: 12px 16px;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+}
+.hero-sum-val { font-size: 16px; font-weight: 800; color: #EA580C; }
+.hero-sum-right { font-size: 12px; font-weight: 800; color: #0D9488; text-align: right; }
 
 /* ---------- KPI cards ---------- */
 .kpi-card { border-radius: 20px; padding: 18px 20px; min-height: 128px; border: 1.5px solid; transition: transform .2s ease, box-shadow .2s ease; }
@@ -313,6 +412,16 @@ def style_chart(fig, height: int = 320):
     fig.update_xaxes(showgrid=False, title=None)
     fig.update_yaxes(gridcolor="#F1F5F9", title=None)
     return fig
+
+
+def show_df_preview(df: pd.DataFrame, max_rows: int = 500, **kwargs) -> None:
+    """Hiển thị tối đa max_rows dòng để tránh lag trình duyệt với tập dữ liệu lớn (15.000+ dòng)."""
+    total = len(df)
+    if total > max_rows:
+        st.caption(f"Đang hiển thị {max_rows:,} / {total:,} dòng đầu tiên để tối ưu hiệu năng trình duyệt.")
+        st.dataframe(df.head(max_rows), **kwargs)
+    else:
+        st.dataframe(df, **kwargs)
 
 
 # ==============================================================================
@@ -477,7 +586,23 @@ def phase_states() -> list:
 
 def render_header(title: str, subtitle: str) -> None:
     source = st.session_state.source_name if st.session_state.data_status == "CONNECTED" else "Chưa kết nối nguồn dữ liệu"
+    agent_txt = "AI Agent Sẵn sàng" if st.session_state.data_status == "CONNECTED" else "Chờ nạp dữ liệu"
     html(f"""
+    <div class="top-glass-bar">
+        <div class="top-ws">
+            <div class="top-ws-badge">GM</div>
+            <span>GrowthMetric Workspace</span>
+            <span class="badge idle">{source}</span>
+        </div>
+        <div class="top-search">Tìm kiếm chiến dịch, dữ liệu, mã đơn, báo cáo...</div>
+        <div class="top-right">
+            <span class="agent-pill">● {agent_txt}</span>
+            <div class="profile-chip">
+                <div class="avatar">{ADMIN_INITIALS}</div>
+                <div><div class="p-name">{ADMIN_NAME}</div><div class="p-role">Admin account</div></div>
+            </div>
+        </div>
+    </div>
     <div class="page-header">
         <div>
             <h1 class="page-title">{title}</h1>
@@ -485,10 +610,6 @@ def render_header(title: str, subtitle: str) -> None:
         </div>
         <div class="header-meta">
             <div class="source-chip" title="{source}">Nguồn: {source}</div>
-            <div class="profile-chip">
-                <div class="avatar">{ADMIN_INITIALS}</div>
-                <div><div class="p-name">{ADMIN_NAME}</div><div class="p-role">Admin account</div></div>
-            </div>
         </div>
     </div>
     """)
@@ -518,10 +639,10 @@ def empty_state(message: str, button_label: str, page: str, key: str) -> None:
 with st.sidebar:
     html("""
     <div class="brand">
-        <div class="brand-logo">☁️</div>
-        <div><div class="brand-title">cloudcash</div><div class="brand-sub">Marketing Analytics</div></div>
+        <div class="brand-logo">GM</div>
+        <div><div class="brand-title">cloudcash</div><div class="brand-sub">Marketing Analytics OS</div></div>
     </div>
-    <div class="nav-caption">ĐIỀU HƯỚNG</div>
+    <div class="nav-caption">QUY TRÌNH CHÍNH</div>
     """)
     st.radio("Điều hướng", PAGES, key="nav_page", label_visibility="collapsed")
 
@@ -555,6 +676,13 @@ with st.sidebar:
         <div class="side-row"><span>Phê duyệt</span>{ap}</div>
         <div class="side-row"><span>Verification</span>{vr}</div>
     </div>
+    <div class="side-admin">
+        <div class="side-admin-avatar">{ADMIN_INITIALS}</div>
+        <div>
+            <div class="side-admin-name">{ADMIN_NAME}</div>
+            <div class="side-admin-sub">Admin account • {s.cleaning_status}</div>
+        </div>
+    </div>
     """)
 
 # Thông báo toast sau khi thao tác (hiển thị một lần)
@@ -573,21 +701,61 @@ if page == PAGES[0]:
     render_header("Tổng quan hiệu quả Marketing", "Theo dõi doanh thu phân bổ, Net Sales, chi phí và đóng góp lợi nhuận của từng chiến dịch.")
 
     if st.session_state.data_status != "CONNECTED":
-        html("""
-        <div class="hero-card">
-            <h2>Bắt đầu phân tích trong 3 bước</h2>
-            <p>1. Nạp dữ liệu (Google Sheets, Excel/CSV hoặc bộ mẫu) &nbsp;•&nbsp; 2. Làm sạch &amp; chạy quy trình 6 bước &nbsp;•&nbsp; 3. Phê duyệt, kiểm chứng và xuất báo cáo HTML.</p>
-        </div>
-        """)
+        with st.container(key="card_hero_glass"):
+            h_left, h_right = st.columns([1.15, 1.0], gap="large")
+            with h_left:
+                html("""
+                <div class="hero-tag">✨ Spatial Intelligence • Quy trình chuẩn 6 bước</div>
+                <div class="hero-h1">Trung Tâm Điều Hành<br><span>GrowthMetric Analytics</span></div>
+                <p class="hero-desc">
+                    Tự động làm sạch dữ liệu Google Sheets đa tab, phân bổ doanh thu đa điểm chạm,
+                    đối soát hoàn trả, tính chi phí ABC và kiểm toán 7 bất biến tài chính trước khi xuất báo cáo.
+                </p>
+                """)
+                st.write("")
+                b1, b2 = st.columns(2)
+                b1.button("⚡ Nạp Bộ 3 Tabs Chuẩn", type="primary", width="stretch",
+                          on_click=load_sample, args=("standard",), key="qs_std")
+                b2.button("Kết nối Google Sheets / File →", width="stretch",
+                          on_click=go_to, args=(PAGES[1],), key="qs_connect")
+            with h_right:
+                html("""
+                <div class="mini-grid">
+                    <div class="mini-stat green">
+                        <div class="mini-top"><span>✓</span><span class="mini-pill">Auto</span></div>
+                        <div class="mini-lbl">Làm Sạch Tự Động</div>
+                        <div class="mini-num">6 Bước</div>
+                        <div class="mini-foot">Bảo toàn Raw Data</div>
+                    </div>
+                    <div class="mini-stat orange">
+                        <div class="mini-top"><span>!</span><span class="mini-pill">Review</span></div>
+                        <div class="mini-lbl">Phê Duyệt Ngoại Lệ</div>
+                        <div class="mini-num">0</div>
+                        <div class="mini-foot">Chưa nạp dữ liệu</div>
+                    </div>
+                    <div class="mini-stat amber">
+                        <div class="mini-top"><span>⚑</span><span class="mini-pill">Audit</span></div>
+                        <div class="mini-lbl">Kiểm Toán Suite</div>
+                        <div class="mini-num">7 Tests</div>
+                        <div class="mini-foot">Đối soát bất biến</div>
+                    </div>
+                </div>
+                <div class="hero-summary-bar">
+                    <div>
+                        <div style="font-size:11px;font-weight:700;color:#64748B;">Trạng thái hệ thống</div>
+                        <div class="hero-sum-val">Sẵn sàng nhận dữ liệu</div>
+                    </div>
+                    <div class="hero-sum-right">Multi-Tab Google Sheets<br><span style="color:#64748B;font-weight:600;">Excel / CSV / Dữ liệu mẫu</span></div>
+                </div>
+                """)
+
         with st.container(key="card_quickstart"):
-            card_header("Nạp nhanh bộ dữ liệu mẫu", "Dùng để thử hệ thống ngay. Dữ liệu thật của bạn có thể kết nối ở trang Kết Nối Google Sheets.")
-            c1, c2, c3 = st.columns(3)
-            c1.button("GiaHoa TestCase_08 (dữ liệu lộn xộn)", type="primary", width="stretch",
+            card_header("Nạp dữ liệu đầu vào nhanh", "Chọn nhanh bộ dữ liệu kiểm thử hoặc kết nối Google Sheets ở trên để bắt đầu.")
+            c1, c2 = st.columns(2)
+            c1.button("GiaHoa TestCase_08 (dữ liệu lộn xộn)", width="stretch",
                       on_click=load_sample, args=("messy",), key="qs_messy")
-            c2.button("E-Commerce 12 cột", width="stretch", on_click=load_sample, args=("ecommerce",), key="qs_ecom")
-            c3.button("Bộ 3 tabs chuẩn", width="stretch", on_click=load_sample, args=("standard",), key="qs_std")
-            st.write("")
-            st.button("Kết nối Google Sheets / tải file của tôi →", on_click=go_to, args=(PAGES[1],), key="qs_connect")
+            c2.button("E-Commerce 12 cột (Net Sales, COGS, Profit)", width="stretch",
+                      on_click=load_sample, args=("ecommerce",), key="qs_ecom")
 
     elif not has_report():
         with st.container(key="card_ready"):
@@ -1021,12 +1189,12 @@ elif page == PAGES[2]:
                         st.caption("Chưa có bảng Normalized_Transactions hợp lệ.")
             with t_log:
                 if st.session_state.cleaning_errors:
-                    st.dataframe(pd.DataFrame(st.session_state.cleaning_errors), width="stretch", hide_index=True)
+                    show_df_preview(pd.DataFrame(st.session_state.cleaning_errors), width="stretch", hide_index=True)
                 else:
                     st.success("Không ghi nhận cảnh báo nào.")
             with t_audit:
                 if st.session_state.audit_log:
-                    st.dataframe(pd.DataFrame(st.session_state.audit_log), width="stretch", hide_index=True)
+                    show_df_preview(pd.DataFrame(st.session_state.audit_log), width="stretch", hide_index=True)
                 else:
                     st.caption("Không có thay đổi tự động nào được ghi nhận.")
 
@@ -1088,7 +1256,7 @@ elif page == PAGES[3]:
                 st.dataframe(eng.report_result, width="stretch", hide_index=True)
             with t_det:
                 if eng.detailed_attributed_df is not None:
-                    st.dataframe(eng.detailed_attributed_df, width="stretch", hide_index=True)
+                    show_df_preview(eng.detailed_attributed_df, width="stretch", hide_index=True)
             st.write("")
             if pending_exceptions():
                 next_step("Tiếp tục: Phê duyệt ngoại lệ →", PAGES[4], "proc_next_appr")
@@ -1124,7 +1292,7 @@ elif page == PAGES[4]:
             with st.container(key="card_approve_form"):
                 card_header("Ra quyết định", "Chọn ngoại lệ và hành động")
                 if pending:
-                    options = {f"{e['Order_ID']} — {e['Error_Type']}": e["Order_ID"] for e in pending}
+                    options = {f"{e['Order_ID']} — {e['Error_Type']}": (e["Order_ID"], e["Error_Type"]) for e in pending}
                     with st.form("approve_form", border=False):
                         choice = st.selectbox("Ngoại lệ", list(options.keys()))
                         action = st.radio("Hành động", ["Chấp thuận", "Từ chối / loại trừ", "Yêu cầu làm rõ"], horizontal=True)
@@ -1137,7 +1305,8 @@ elif page == PAGES[4]:
                         submit = st.form_submit_button("Xác nhận quyết định", type="primary", width="stretch")
                     if submit:
                         code = {"Chấp thuận": "APPROVE", "Từ chối / loại trừ": "REJECT"}.get(action, "REQUEST_CORRECTION")
-                        ok, msg = st.session_state.engine.resolve_exception(options[choice], code, role, reviewer, note)
+                        oid_sel, etype_sel = options[choice]
+                        ok, msg = st.session_state.engine.resolve_exception(oid_sel, code, role, reviewer, note, error_type=etype_sel)
                         if ok:
                             st.session_state.exceptions_list = st.session_state.engine.exceptions_view
                             # Kết quả kiểm chứng cũ không còn đúng sau khi thay đổi phê duyệt
@@ -1153,7 +1322,7 @@ elif page == PAGES[4]:
         with col_list:
             with st.container(key="card_exc_list"):
                 card_header("Danh sách ngoại lệ", f"{len(exceptions)} mục")
-                st.dataframe(pd.DataFrame(exceptions), width="stretch", hide_index=True, height=420)
+                show_df_preview(pd.DataFrame(exceptions), width="stretch", hide_index=True, height=420)
 
 
 # ==============================================================================

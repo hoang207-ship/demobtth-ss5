@@ -338,6 +338,61 @@ SCHEMA_SYNONYMS: Dict[str, Dict[str, Any]] = {
 }
 
 
+_CAMPAIGN_CODE_RE = re.compile(r'^(?:PG|CMP|CAMP|CD|ADS|MKT|KM|PROMO)[-_]?\d{1,5}$', re.IGNORECASE)
+_ORDER_ID_RE = re.compile(r'^(?:ORD|GH|DH|HD|INV|TX)[-_]?\d{2,}(?:[-_]\d+)?$', re.IGNORECASE)
+_CURRENCY_HINT_RE = re.compile(r'^-?[\d\.\,]+\s*(?:vnđ|vnd|đồng|dong|đ|triệu|trieu|tr|nghìn|nghin|ngàn|k|tỷ|ty|b)?$', re.IGNORECASE)
+_DATE_HINT_RE = re.compile(r'^(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})$')
+
+
+def is_campaign_code_value(val: Any) -> bool:
+    """Kiểm tra một giá trị ô có phải mã chiến dịch (VD: PG01, PG02, CMP-01) hay không."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return False
+    s = str(val).strip()
+    if not s or s.lower() in {"nan", "none", "null"}:
+        return False
+    tokens = [t.strip() for t in re.split(r'[;/,|+\s]+', s) if t.strip()]
+    return len(tokens) > 0 and all(bool(_CAMPAIGN_CODE_RE.match(t)) for t in tokens)
+
+
+def infer_column_semantics(series: pd.Series) -> Dict[str, Any]:
+    """Nhận diện kiểu dữ liệu và ngữ nghĩa thực tế dựa trên nội dung các ô trong cột."""
+    non_empty = [
+        str(v).strip() for v in series.tolist()
+        if v is not None and not (isinstance(v, float) and pd.isna(v)) and str(v).strip().lower() not in {"", "nan", "none", "null"}
+    ]
+    n = len(non_empty)
+    if n == 0:
+        return {"inferred_type": "Empty", "non_empty": 0, "campaign_ratio": 0.0, "currency_ratio": 0.0, "date_ratio": 0.0, "order_id_ratio": 0.0}
+
+    cmp_cnt = sum(1 for s in non_empty if is_campaign_code_value(s))
+    curr_cnt = sum(1 for s in non_empty if bool(_CURRENCY_HINT_RE.match(s)))
+    date_cnt = sum(1 for s in non_empty if bool(_DATE_HINT_RE.match(s.split(" ")[0])))
+    oid_cnt = sum(1 for s in non_empty if bool(_ORDER_ID_RE.match(s)))
+
+    ratios = {
+        "Campaign_ID": cmp_cnt / n,
+        "Currency": curr_cnt / n,
+        "Date": date_cnt / n,
+        "Order_ID": oid_cnt / n,
+    }
+    best_type, best_ratio = max(ratios.items(), key=lambda x: x[1])
+    inferred = best_type if best_ratio >= 0.4 else "Text"
+    return {
+        "inferred_type": inferred,
+        "non_empty": n,
+        "campaign_ratio": round(ratios["Campaign_ID"], 2),
+        "currency_ratio": round(ratios["Currency"], 2),
+        "date_ratio": round(ratios["Date"], 2),
+        "order_id_ratio": round(ratios["Order_ID"], 2),
+    }
+
+
+def is_unnamed_column(col_name: Any) -> bool:
+    s = str(col_name).strip()
+    return s == "" or s.lower().startswith("unnamed:")
+
+
 class AutoSchemaMapper:
     """
     Module tự động nhận diện và ánh xạ cột dữ liệu tiếng Việt / tiếng Anh về Schema chuẩn nội bộ.
@@ -407,7 +462,7 @@ class AutoSchemaMapper:
 
         return 0.0, "NO_MATCH"
 
-    def map_columns(self, raw_columns: List[str], target_tab: str = "Transactions") -> Dict[str, Any]:
+    def map_columns(self, raw_columns: List[str], target_tab: str = "Transactions", df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
         """
         Nhận danh sách cột thô và thực hiện ánh xạ tối ưu về Schema của Tab mục tiêu.
         Đảm bảo nguyên tắc: Không tự ánh xạ 2 cột khác nhau vào cùng 1 trường chuẩn.
@@ -464,6 +519,24 @@ class AutoSchemaMapper:
             if meta.get("required") and f not in used_std_fields
         ]
 
+        column_profiles: Dict[str, Dict[str, Any]] = {}
+        semantic_conflicts: List[Dict[str, Any]] = []
+        if df is not None and not df.empty:
+            for col in raw_columns:
+                if col in df.columns:
+                    prof = infer_column_semantics(df[col])
+                    prof["is_unnamed"] = is_unnamed_column(col)
+                    prof["mapped_field"] = mapped_fields.get(col)
+                    column_profiles[col] = prof
+                    # Phát hiện xung đột ngữ nghĩa: cột COGS/Order_Value nhưng nội dung lại chứa mã chiến dịch
+                    if mapped_fields.get(col) in ("COGS", "Order_Value", "Gross_Sales") and prof["campaign_ratio"] >= 0.4:
+                        semantic_conflicts.append({
+                            "Column": col,
+                            "Mapped_Field": mapped_fields.get(col),
+                            "Inferred_Content": prof["inferred_type"],
+                            "Campaign_Ratio": prof["campaign_ratio"],
+                        })
+
         # Kiểm tra xem có cột doanh thu nào được ánh xạ hay không (Order_Value hoặc Gross_Sales)
         has_revenue_col = ("Order_Value" in used_std_fields or "Gross_Sales" in used_std_fields)
 
@@ -473,6 +546,8 @@ class AutoSchemaMapper:
             "mapping_table": mapping_details,     # Danh sách chi tiết hiển thị UI
             "unmapped_columns": unmapped_cols,    # Cột không ánh xạ được
             "missing_required": required_missing, # Cột bắt buộc bị thiếu
+            "column_profiles": column_profiles,
+            "semantic_conflicts": semantic_conflicts,
             "has_revenue_col": has_revenue_col,
             "has_campaign_col": "Campaign_List" in used_std_fields,
             "is_valid": has_revenue_col # Hợp lệ nếu có ít nhất trường doanh thu để phân tích

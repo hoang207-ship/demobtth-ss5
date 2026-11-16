@@ -160,8 +160,10 @@ class MarketingAnalyticsEngine:
 
             for _, r in df_tx.iterrows():
                 order_id = r["Order_ID"]
-                order_val = float(r.get("Order_Value", 0.0))
-                cogs = float(r.get("COGS", 0.0))
+                raw_ov = r.get("Order_Value")
+                order_val = 0.0 if (raw_ov is None or pd.isna(raw_ov)) else float(raw_ov)
+                raw_cg = r.get("COGS")
+                cogs = 0.0 if (raw_cg is None or pd.isna(raw_cg)) else float(raw_cg)
                 order_date = r.get("Order_Date")
                 channel = r.get("Channel", "Unknown")
 
@@ -564,46 +566,101 @@ class MarketingAnalyticsEngine:
     # HUMAN-IN-THE-LOOP: PHÊ DUYỆT NGOẠI LỆ CÓ KIỂM SOÁT THẨM QUYỀN
     # ==========================================================================
 
+    def _recover_shifted_transaction_row(self, order_id: str, exc_item: Dict[str, Any]) -> None:
+        """Khôi phục COGS, Campaign_List và Source_Profit cho dòng bị lệch cột khi Trưởng phòng APPROVED."""
+        df_tx = self.data.get("Normalized_Transactions")
+        if df_tx is None or df_tx.empty:
+            return
+        mask = df_tx["Order_ID"] == order_id
+        if not mask.any():
+            return
+
+        cand_curr = exc_item.get("Unmapped_Currency_Candidate")
+        shifted_cmps = exc_item.get("Shifted_Campaigns") or []
+        if not shifted_cmps and exc_item.get("Campaign_ID") not in (None, "", "N/A", "UNKNOWN"):
+            shifted_cmps = [c.strip().upper() for c in str(exc_item["Campaign_ID"]).split(";") if c.strip()]
+
+        for row_idx in df_tx.index[mask]:
+            # 1. Khôi phục COGS từ Unmapped_Currency_Candidate (nếu có)
+            row_cand = cand_curr if cand_curr is not None else df_tx.at[row_idx, "Unmapped_Currency_Candidate"] if "Unmapped_Currency_Candidate" in df_tx.columns else None
+            if row_cand is not None and not pd.isna(row_cand):
+                df_tx.at[row_idx, "COGS"] = float(row_cand)
+                if "COGS_Status" in df_tx.columns:
+                    df_tx.at[row_idx, "COGS_Status"] = "RECOVERED_APPROVED"
+
+            # 2. Gộp các mã chiến dịch bị lệch vào Campaign_List / Campaign_List_Str / Campaign_Count
+            row_shifted = list(shifted_cmps)
+            if not row_shifted and "Shifted_Campaigns" in df_tx.columns:
+                raw_sc = df_tx.at[row_idx, "Shifted_Campaigns"]
+                if isinstance(raw_sc, str) and raw_sc.strip():
+                    row_shifted = [c.strip().upper() for c in raw_sc.split(";") if c.strip()]
+
+            if row_shifted:
+                curr_list = df_tx.at[row_idx, "Campaign_List"]
+                if isinstance(curr_list, list):
+                    merged = list(curr_list)
+                elif isinstance(curr_list, str) and curr_list.strip() not in ("", "KHONG_CO", "MISSING_SOURCE_DATA"):
+                    merged = [c.strip().upper() for c in curr_list.split(";") if c.strip()]
+                else:
+                    merged = []
+                for c in row_shifted:
+                    if c not in merged:
+                        merged.append(c)
+                df_tx.at[row_idx, "Campaign_List"] = merged
+                df_tx.at[row_idx, "Campaign_List_Str"] = "; ".join(merged)
+                df_tx.at[row_idx, "Campaign_Count"] = len(merged)
+
+            # 3. Tính lại Source_Profit = Order_Value - COGS khi đủ dữ liệu
+            ov = df_tx.at[row_idx, "Order_Value"]
+            cg = df_tx.at[row_idx, "COGS"]
+            if ov is not None and not pd.isna(ov) and cg is not None and not pd.isna(cg):
+                df_tx.at[row_idx, "Source_Profit"] = float(ov) - float(cg)
+                if "Formula_Status" in df_tx.columns:
+                    df_tx.at[row_idx, "Formula_Status"] = "COMPUTED_NET_MINUS_COGS"
+
     def resolve_exception(
         self,
         order_id: str,
         action: str,
         reviewer_role: str,
         reviewer_name: str,
-        note: str = ""
+        note: str = "",
+        error_type: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         Phê duyệt hoặc từ chối ngoại lệ với kiểm soát thẩm quyền chặt chẽ:
-        - Kiểm tra quyền: reviewer_role phải thuộc danh sách AUTHORIZED_ROLES.
-        - Kiểm tra giải trình: Bắt buộc phải có note ghi chú cho các trường hợp nghiêm trọng.
-        - Lưu lịch sử kiểm toán (Approval Audit Log).
+        - Lọc theo cặp (Order_ID, Error_Type) khi có error_type.
+        - Tự động khôi phục dữ liệu lệch cột (CAMPAIGN_IN_COGS_COLUMN) khi APPROVED.
         """
-        # 1. Kiểm soát quyền hạn ở Backend
         if reviewer_role not in self.AUTHORIZED_ROLES:
             return False, f"Từ chối thao tác: Vai trò '{reviewer_role}' không có thẩm quyền phê duyệt ngoại lệ (Yêu cầu: Trưởng phòng Marketing hoặc Quản trị viên)."
 
-        # 2. Kiểm tra ghi chú giải trình nếu là action quan trọng
+        def _match(e: Dict[str, Any]) -> bool:
+            return e.get("Order_ID") == order_id and (error_type is None or e.get("Error_Type") == error_type)
+
         clean_note = str(note).strip()
         if not clean_note and action in ["APPROVE", "CHẤP THUẬN", "APPROVED"]:
-            # Kiểm tra xem item có mức độ HIGH hoặc CRITICAL không
-            target_items = [e for e in self.exceptions_view if e["Order_ID"] == order_id]
+            target_items = [e for e in self.exceptions_view if _match(e)]
             if target_items and target_items[0].get("Severity") in ["CRITICAL", "HIGH"]:
                 return False, f"Bắt buộc nhập lý do / ghi chú giải trình khi phê duyệt ngoại lệ có độ rủi ro {target_items[0].get('Severity')}."
 
-        # 3. Cập nhật trạng thái
         updated = False
         action_std = "APPROVED" if "APPROVE" in action.upper() else ("REJECTED" if "REJECT" in action.upper() else "CORRECTION_REQUESTED")
 
         for e in self.exceptions_view:
-            if e["Order_ID"] == order_id:
+            if _match(e):
                 e["Approval_Status"] = action_std
                 e["Reviewer"] = f"{reviewer_name} ({reviewer_role})"
                 e["Review_Time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 e["Note"] = clean_note
                 updated = True
 
+                if action_std == "APPROVED" and e.get("Error_Type") == "CAMPAIGN_IN_COGS_COLUMN":
+                    self._recover_shifted_transaction_row(order_id, e)
+
                 self.approval_history.append({
                     "Order_ID": order_id,
+                    "Error_Type": e.get("Error_Type", ""),
                     "Action": action_std,
                     "Reviewer": reviewer_name,
                     "Role": reviewer_role,
@@ -613,7 +670,6 @@ class MarketingAnalyticsEngine:
 
         if updated:
             self.log("Human-in-the-Loop", "PASS", f"Đã cập nhật trạng thái {action_std} cho ngoại lệ {order_id} bởi {reviewer_name}.")
-            # Chạy lại các bước phụ thuộc
             self.run_process_workflow()
             return True, f"Phê duyệt thành công: Đã chuyển trạng thái sang {action_std} cho {order_id}."
         else:
@@ -698,7 +754,7 @@ class MarketingAnalyticsEngine:
             total_attr = self.detailed_attributed_df["Attributed_Revenue"].sum()
             # Doanh thu nguồn chỉ tính các đơn hợp lệ không bị từ chối
             rejected_ids = set(e["Order_ID"] for e in self.exceptions_view if e.get("Approval_Status") == "REJECTED")
-            valid_source = df_tx[~df_tx["Order_ID"].isin(rejected_ids)]["Order_Value"].sum() if df_tx is not None else 0.0
+            valid_source = float(pd.to_numeric(df_tx[~df_tx["Order_ID"].isin(rejected_ids)]["Order_Value"], errors="coerce").fillna(0.0).sum()) if df_tx is not None else 0.0
             diff_rev = abs(valid_source - total_attr)
             t4_pass = (diff_rev < 0.01)
             tests.append({

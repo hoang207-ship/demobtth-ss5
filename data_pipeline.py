@@ -5,7 +5,23 @@ import uuid
 from typing import Dict, Any, Tuple, List, Optional
 import pandas as pd
 import requests
-from schema_mapper import AutoSchemaMapper, normalize_column_name, remove_vietnamese_accents
+from schema_mapper import (
+    AutoSchemaMapper,
+    normalize_column_name,
+    remove_vietnamese_accents,
+    is_campaign_code_value,
+    is_unnamed_column,
+)
+
+
+def excel_col_letter(idx: int) -> str:
+    """Chuyển chỉ số cột 0-based thành ký tự cột Excel (0 -> A, 5 -> F)."""
+    res = ""
+    n = idx + 1
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        res = chr(65 + rem) + res
+    return res
 
 
 # ==============================================================================
@@ -153,12 +169,12 @@ def parse_campaign_list(val: Any, raw_count: Any = None) -> Tuple[List[str], int
     if any(err in s_lower for err in ["lỗi", "loi", "error", "#value!", "#n/a"]):
         return [], 0, "EXCEPTION_INVALID", f"Dữ liệu chiến dịch bị lỗi định dạng: '{s}'"
 
-    # Phân tách theo dấu ; / , | + và khoảng trắng
-    raw_tokens = re.split(r'[\;\/\,\|\+\s]+', s)
+    # Phân tách theo dấu ; / , | + & và khoảng trắng
+    raw_tokens = re.split(r'[\;\/\,\|\+\&\s]+', s)
     clean_campaigns = []
     for token in raw_tokens:
         clean_token = token.strip().upper()
-        if clean_token and clean_token not in ["KHONG_CO", "KHONG", "CO", "NONE", "NA", "N/A"]:
+        if clean_token and clean_token not in ["KHONG_CO", "KHONG", "CO", "NONE", "NA", "N/A", "&", "AND"]:
             if clean_token not in clean_campaigns:
                 clean_campaigns.append(clean_token)
 
@@ -178,7 +194,7 @@ def parse_campaign_list(val: Any, raw_count: Any = None) -> Tuple[List[str], int
         except Exception:
             pass
 
-    status = "AUTO_FIXED" if (";" in s or "/" in s or "," in s or len(clean_campaigns) > 1) else "VALID"
+    status = "AUTO_FIXED" if (";" in s or "/" in s or "," in s or "&" in s or len(clean_campaigns) > 1) else "VALID"
     desc = f"Nhận diện {calc_count} chiến dịch: {', '.join(clean_campaigns)}"
     return clean_campaigns, calc_count, status, desc
 
@@ -749,11 +765,24 @@ class DataCleaner:
                         "Description": f"Tab '{tx_tab_name}' không có dòng dữ liệu nào."
                     })
                 else:
-                    mapping_info = self.mapper.map_columns(list(raw_tx_df.columns), target_tab="Transactions")
+                    mapping_info = self.mapper.map_columns(list(raw_tx_df.columns), target_tab="Transactions", df=raw_tx_df)
                     self.mapping_summary.extend(mapping_info["mapping_table"])
 
                     col_map = mapping_info["mapped_dict"]
                     rev_map = mapping_info["reverse_dict"]
+                    unmapped_cols = mapping_info.get("unmapped_columns", [])
+                    col_idx_map = {col: i for i, col in enumerate(raw_tx_df.columns)}
+
+                    # Ghi nhận các cột không có tiêu đề (Unnamed) có chứa dữ liệu tài chính/ngày tháng vào Audit Log
+                    for u_col, prof in mapping_info.get("column_profiles", {}).items():
+                        if u_col in unmapped_cols and prof.get("non_empty", 0) > 0:
+                            col_let = excel_col_letter(col_idx_map[u_col]) if u_col in col_idx_map else "?"
+                            self._record_audit(
+                                tx_tab_name, str(u_col), 0, f"COL-{col_let}",
+                                str(u_col), f"Detected: {prof['inferred_type']}",
+                                f"Cột '{u_col}' (vị trí {col_let}) chưa ánh xạ nhưng chứa dữ liệu {prof['inferred_type']} ({prof['non_empty']} ô)",
+                                "UNNAMED_COLUMN_PROFILED"
+                            )
 
                     has_campaign_col = mapping_info["has_campaign_col"]
                     campaign_data_status = "AVAILABLE" if has_campaign_col else "MISSING_SOURCE_DATA"
@@ -794,11 +823,12 @@ class DataCleaner:
                         dup_ids = set()
 
                     norm_rows = []
+                    seen_dup_ids = set()
                     tx_auto_fixed = 0
                     tx_errors = 0
                     tx_exceptions = 0
 
-                    for idx, r in raw_tx_df.iterrows():
+                    for idx, r in enumerate(raw_tx_df.to_dict("records")):
                         row_has_exception = False
 
                         # 1.1 Chuẩn hóa Order_ID
@@ -838,7 +868,8 @@ class DataCleaner:
                                 "Raw_Value": str(raw_id_val), "Action_Taken": "Không tự xóa, giữ nguyên và đưa vào Exceptions",
                                 "Description": f"Mã đơn hàng {clean_order_id} bị lặp lại trong hệ thống"
                             })
-                            if clean_order_id not in [e["Order_ID"] for e in self.exceptions_view if e["Error_Type"] == "DUPLICATE_ORDER_ID"]:
+                            if clean_order_id not in seen_dup_ids:
+                                seen_dup_ids.add(clean_order_id)
                                 tx_exceptions += 1
                                 self.exceptions_view.append({
                                     "Order_ID": clean_order_id, "Campaign_ID": "N/A", "Error_Type": "DUPLICATE_ORDER_ID",
@@ -878,9 +909,9 @@ class DataCleaner:
                             })
                             self._record_audit(tx_tab_name, "Order_Value", idx+1, clean_order_id, raw_order_val, clean_val, val_desc, "NEEDS_APPROVAL")
 
-                        actual_norm_val = clean_val if clean_val is not None else 0.0
-                        sum_norm_order_value += actual_norm_val
+                        actual_norm_val = clean_val  # Không biến dữ liệu không xác định thành 0
                         if clean_val is not None:
+                            sum_norm_order_value += clean_val
                             sum_src_net_sales += clean_val
 
                         # 1.3 Chuẩn hóa Doanh thu gộp (Gross_Sales)
@@ -891,39 +922,129 @@ class DataCleaner:
                             tx_auto_fixed += 1
                             self._record_audit(tx_tab_name, "Gross_Sales", idx+1, clean_order_id, raw_gross_val, clean_gross_val, gross_desc, "CURRENCY_NORMALIZED")
                         actual_gross = clean_gross_val if clean_gross_val is not None else actual_norm_val
-                        sum_norm_gross_sales += actual_gross
-                        sum_src_gross_sales += actual_gross
+                        if actual_gross is not None:
+                            sum_norm_gross_sales += actual_gross
+                            sum_src_gross_sales += actual_gross
 
-                        # 1.4 Chuẩn hóa Giá vốn (COGS / Cost_VND)
+                        # 1.4 Chuẩn hóa Giá vốn (COGS / Cost_VND) — Không biến mã chiến dịch hoặc lỗi thành 0
                         raw_cogs_val = r.get(cogs_col) if cogs_col else None
-                        clean_cogs, cogs_status, cogs_desc = parse_currency_value(raw_cogs_val) if raw_cogs_val is not None else (None, "NOT_PROVIDED", "")
-                        if cogs_status == "AUTO_FIXED":
-                            auto_fixed_count += 1
-                            tx_auto_fixed += 1
-                            self._record_audit(tx_tab_name, "COGS", idx+1, clean_order_id, raw_cogs_val, clean_cogs, cogs_desc, "CURRENCY_NORMALIZED")
-                        elif "EXCEPTION" in cogs_status:
-                            if cogs_status == "EXCEPTION_MISSING":
-                                missing_fields_count += 1
-                            warning_count += 1
+                        cogs_cell_ref = f"{excel_col_letter(col_idx_map[cogs_col])}{idx + 2}" if (cogs_col and cogs_col in col_idx_map) else "N/A"
+                        unmapped_curr_candidate = None
+                        unmapped_curr_cell = None
+                        shifted_campaigns: List[str] = []
+
+                        if cogs_col and is_campaign_code_value(raw_cogs_val):
+                            clean_cogs = None
+                            cogs_status = "EXCEPTION_CAMPAIGN_IN_COGS"
+                            # Tách mã chiến dịch nằm trong cột COGS
+                            for tok in re.split(r'[\;\/\,\|\+\&\s]+', str(raw_cogs_val).strip()):
+                                t_up = tok.strip().upper()
+                                if t_up and is_campaign_code_value(t_up) and t_up not in shifted_campaigns:
+                                    shifted_campaigns.append(t_up)
+                            # Quét toàn bộ các cột chưa ánh xạ (Extra_Unnamed: 5, Extra_Unnamed: 6...) để tách mã chiến dịch bị lệch & tìm tiền tệ
+                            for u_col in unmapped_cols:
+                                u_val = r.get(u_col)
+                                if u_val is None or (isinstance(u_val, float) and pd.isna(u_val)) or str(u_val).strip() == "":
+                                    continue
+                                if is_campaign_code_value(u_val):
+                                    for tok in re.split(r'[\;\/\,\|\+\&\s]+', str(u_val).strip()):
+                                        t_up = tok.strip().upper()
+                                        if t_up and is_campaign_code_value(t_up) and t_up not in shifted_campaigns:
+                                            shifted_campaigns.append(t_up)
+                                elif unmapped_curr_candidate is None:
+                                    cand_curr, cand_stat, _ = parse_currency_value(u_val)
+                                    if cand_curr is not None and cand_stat in ("VALID", "AUTO_FIXED"):
+                                        u_let = excel_col_letter(col_idx_map[u_col]) if u_col in col_idx_map else "?"
+                                        unmapped_curr_candidate = cand_curr
+                                        unmapped_curr_cell = f"{u_let}{idx + 2} ({u_col}: '{u_val}')"
+
+                            row_has_exception = True
+                            exception_count += 1
                             tx_errors += 1
+                            tx_exceptions += 1
+                            shifted_str = "; ".join(shifted_campaigns)
+                            cogs_desc = (
+                                f"Phát hiện mã chiến dịch '{shifted_str}' bị lệch sang cột COGS ({cogs_cell_ref}). "
+                                + (f"Tìm thấy giá trị tiền tệ {unmapped_curr_candidate:,.0f} đ tại ô {unmapped_curr_cell}." if unmapped_curr_candidate is not None else "Không tìm thấy giá trị tiền tệ thay thế.")
+                            )
                             self.errors_log.append({
                                 "Tab": tx_tab_name, "Row_Index": idx+1, "Order_ID": clean_order_id,
-                                "Field": "COGS", "Error_Type": cogs_status, "Severity": "MEDIUM",
-                                "Raw_Value": str(raw_cogs_val), "Action_Taken": "Ghi nhận cảnh báo",
+                                "Field": "COGS", "Error_Type": "CAMPAIGN_IN_COGS_COLUMN", "Severity": "HIGH",
+                                "Raw_Value": f"{cogs_cell_ref}={raw_cogs_val}",
+                                "Action_Taken": "Giữ COGS=None (không gán 0), lưu ứng viên khôi phục & đưa vào Exceptions",
                                 "Description": cogs_desc
                             })
+                            self.exceptions_view.append({
+                                "Order_ID": clean_order_id, "Campaign_ID": shifted_str,
+                                "Shifted_Campaigns": list(shifted_campaigns),
+                                "Unmapped_Currency_Candidate": unmapped_curr_candidate,
+                                "Error_Type": "CAMPAIGN_IN_COGS_COLUMN",
+                                "Raw_Value": f"{cogs_cell_ref}: {raw_cogs_val}" + (f" | {unmapped_curr_cell}" if unmapped_curr_cell else ""),
+                                "Normalized_Value": f"COGS=None (Candidate: {unmapped_curr_candidate:,.0f} đ)" if unmapped_curr_candidate is not None else "COGS=None",
+                                "Severity": "HIGH",
+                                "Error_Description": f"Đơn {clean_order_id}: {cogs_desc}",
+                                "Proposed_Action": (
+                                    f"Phê duyệt khôi phục {unmapped_curr_candidate:,.0f} đ từ {unmapped_curr_cell} sang COGS và chuyển '{shifted_str}' về Campaign_List"
+                                    if unmapped_curr_candidate is not None else "Xác minh giá vốn thực tế và tách mã chiến dịch khỏi cột COGS"
+                                ),
+                                "Approval_Status": "PENDING_REVIEW", "Reviewer": "Chưa duyệt", "Review_Time": "N/A", "Note": ""
+                            })
+                            self._record_audit(
+                                tx_tab_name, "COGS", idx+1, clean_order_id,
+                                f"{cogs_cell_ref}={raw_cogs_val}",
+                                f"None (Candidate@{unmapped_curr_cell})" if unmapped_curr_cell else "None",
+                                cogs_desc, "COLUMN_SHIFT_DETECTED"
+                            )
+                        else:
+                            clean_cogs, cogs_status, cogs_desc = parse_currency_value(raw_cogs_val) if cogs_col else (None, "NOT_PROVIDED", "")
+                            if cogs_status == "AUTO_FIXED":
+                                auto_fixed_count += 1
+                                tx_auto_fixed += 1
+                                self._record_audit(tx_tab_name, "COGS", idx+1, clean_order_id, raw_cogs_val, clean_cogs, cogs_desc, "CURRENCY_NORMALIZED")
+                            elif "EXCEPTION" in cogs_status:
+                                if cogs_status == "EXCEPTION_MISSING":
+                                    missing_fields_count += 1
+                                    warning_count += 1
+                                    row_has_exception = True
+                                else:
+                                    exception_count += 1
+                                    tx_exceptions += 1
+                                    row_has_exception = True
+                                    self.exceptions_view.append({
+                                        "Order_ID": clean_order_id, "Campaign_ID": "N/A", "Error_Type": f"COGS_{cogs_status}",
+                                        "Raw_Value": f"{cogs_cell_ref}: {raw_cogs_val}", "Normalized_Value": "None",
+                                        "Severity": "HIGH", "Error_Description": f"Đơn {clean_order_id} ({cogs_cell_ref}): {cogs_desc}",
+                                        "Proposed_Action": "Xác minh giá vốn thực tế, không tự gán 0",
+                                        "Approval_Status": "PENDING_REVIEW", "Reviewer": "Chưa duyệt", "Review_Time": "N/A", "Note": ""
+                                    })
+                                tx_errors += 1
+                                self.errors_log.append({
+                                    "Tab": tx_tab_name, "Row_Index": idx+1, "Order_ID": clean_order_id,
+                                    "Field": "COGS", "Error_Type": cogs_status, "Severity": "HIGH" if cogs_status != "EXCEPTION_MISSING" else "MEDIUM",
+                                    "Raw_Value": f"{cogs_cell_ref}={raw_cogs_val}", "Action_Taken": "Giữ COGS=None (không gán 0)",
+                                    "Description": cogs_desc
+                                })
 
-                        actual_cogs = clean_cogs if clean_cogs is not None else 0.0
-                        sum_norm_cogs += actual_cogs
-                        if clean_cogs is not None:
-                            sum_src_cost += clean_cogs
+                        actual_cogs = clean_cogs  # Không gán 0.0 khi thiếu/lỗi
+                        if actual_cogs is not None:
+                            sum_norm_cogs += actual_cogs
+                            sum_src_cost += actual_cogs
 
-                        # 1.5 Chuẩn hóa Lợi nhuận nguồn (Source_Profit / Profit_VND)
+                        # 1.5 Chuẩn hóa Lợi nhuận nguồn (Source_Profit / Profit_VND) — chỉ tính khi đủ dữ liệu
                         raw_profit_val = r.get(profit_col) if profit_col else None
-                        clean_profit, _, _ = parse_currency_value(raw_profit_val) if raw_profit_val is not None else (None, "NOT_PROVIDED", "")
-                        actual_profit = clean_profit if clean_profit is not None else (actual_norm_val - actual_cogs)
-                        sum_norm_profit += actual_profit
-                        sum_src_profit += clean_profit if clean_profit is not None else actual_profit
+                        clean_profit, _, _ = parse_currency_value(raw_profit_val) if profit_col else (None, "NOT_PROVIDED", "")
+                        if clean_profit is not None:
+                            actual_profit = clean_profit
+                            formula_status = "SOURCE_PROVIDED"
+                        elif actual_norm_val is not None and actual_cogs is not None:
+                            actual_profit = actual_norm_val - actual_cogs
+                            formula_status = "COMPUTED_NET_MINUS_COGS"
+                        else:
+                            actual_profit = None
+                            formula_status = "INSUFFICIENT_DATA"
+                        if actual_profit is not None:
+                            sum_norm_profit += actual_profit
+                            sum_src_profit += clean_profit if clean_profit is not None else actual_profit
 
                         # 1.6 Xử lý Chiến dịch (Campaign_List & Campaign_Count)
                         if not has_campaign_col:
@@ -989,6 +1110,7 @@ class DataCleaner:
                         elif date_status == "EXCEPTION_INVALID_DATE":
                             warning_count += 1
                             tx_errors += 1
+                            row_has_exception = True
                             self.errors_log.append({
                                 "Tab": tx_tab_name, "Row_Index": idx+1, "Order_ID": clean_order_id,
                                 "Field": "Order_Date", "Error_Type": date_status, "Severity": "MEDIUM",
@@ -1019,10 +1141,11 @@ class DataCleaner:
                             })
                         clean_qty = parsed_qty if parsed_qty is not None else 1.0
 
-                        clean_unit_price, _, _ = parse_currency_value(r.get(unit_price_col)) if unit_price_col else (actual_norm_val / max(1.0, clean_qty), "VALID", "")
+                        clean_unit_price, _, _ = parse_currency_value(r.get(unit_price_col)) if unit_price_col else ((actual_norm_val / max(1.0, clean_qty)) if actual_norm_val is not None else None, "VALID", "")
                         parsed_disc_rate, _, _ = parse_numeric_value(r.get(disc_col), allow_percent=True) if disc_col else (0.0, "VALID", "")
                         clean_disc_rate = parsed_disc_rate if parsed_disc_rate is not None else 0.0
-                        clean_disc_amt, _, _ = parse_currency_value(r.get(disc_amount_col)) if disc_amount_col else (actual_gross - actual_norm_val, "VALID", "")
+                        fallback_disc = (actual_gross - actual_norm_val) if (actual_gross is not None and actual_norm_val is not None) else 0.0
+                        clean_disc_amt, _, _ = parse_currency_value(r.get(disc_amount_col)) if disc_amount_col else (fallback_disc, "VALID", "")
 
                         clean_return_status = clean_text_value(r.get(return_status_col) if return_status_col else None) or "No"
                         parsed_ship_days, _, _ = parse_numeric_value(r.get(ship_days_col)) if ship_days_col else (0.0, "VALID", "")
@@ -1054,8 +1177,14 @@ class DataCleaner:
                             "Raw_Gross_Sales": str(raw_gross_val) if raw_gross_val is not None else "",
                             "COGS": actual_cogs,
                             "Raw_COGS": str(raw_cogs_val) if raw_cogs_val is not None else "",
+                            "COGS_Status": cogs_status,
+                            "COGS_Cell_Ref": cogs_cell_ref,
+                            "Unmapped_Currency_Candidate": unmapped_curr_candidate,
+                            "Unmapped_Currency_Cell": unmapped_curr_cell or "",
+                            "Shifted_Campaigns": "; ".join(shifted_campaigns),
                             "Source_Profit": actual_profit,
                             "Raw_Profit": str(raw_profit_val) if raw_profit_val is not None else "",
+                            "Formula_Status": formula_status,
                             "Discount_Amount": clean_disc_amt if clean_disc_amt is not None else 0.0,
                             "Discount_Rate": clean_disc_rate,
                             "Quantity": clean_qty,
@@ -1425,13 +1554,11 @@ class DataCleaner:
                     sheet_name = str(key)[:31]
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
             if self.audit_log:
-                pd.DataFrame(self.audit_log).to_excel(writer, sheet_name='Audit_Log', index=False)
+                pd.DataFrame(self.audit_log).to_excel(writer, sheet_name='Cleaning_Audit_Log', index=False)
             if self.errors_log:
                 pd.DataFrame(self.errors_log).to_excel(writer, sheet_name='Errors_Log', index=False)
             if self.reconciliation_table:
                 pd.DataFrame(self.reconciliation_table).to_excel(writer, sheet_name='Audit_Reconciliation', index=False)
-            if self.errors_log:
-                pd.DataFrame(self.errors_log).to_excel(writer, sheet_name='Cleaning_Audit_Log', index=False)
             if self.mapping_summary:
                 pd.DataFrame(self.mapping_summary).to_excel(writer, sheet_name='Schema_Mapping_Table', index=False)
         return output.getvalue()
