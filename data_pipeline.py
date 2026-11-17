@@ -11,6 +11,8 @@ from schema_mapper import (
     remove_vietnamese_accents,
     is_campaign_code_value,
     is_unnamed_column,
+    find_best_fallback_value_column,
+    infer_column_semantics,
 )
 
 
@@ -267,6 +269,17 @@ def parse_date_value(val: Any) -> Tuple[Optional[str], str, str]:
     if not s or s.lower() in ["nan", "none", "null", ""]:
         return None, "NOT_PROVIDED", "Ngày đặt hàng không có trong nguồn"
 
+    # Hỗ trợ định dạng tháng/năm như '2026-07', '2026/07', '07/2026'
+    m_ym = re.match(r'^(\d{4})[-/](\d{1,2})$', s)
+    if m_ym and 1 <= int(m_ym.group(2)) <= 12:
+        std_ym = f"{m_ym.group(1)}-{int(m_ym.group(2)):02d}"
+        status = "VALID" if s == std_ym else "AUTO_FIXED"
+        return std_ym, status, f"Chuẩn hóa kỳ tháng: {std_ym}"
+    m_my = re.match(r'^(\d{1,2})[-/](\d{4})$', s)
+    if m_my and 1 <= int(m_my.group(1)) <= 12:
+        std_ym = f"{m_my.group(2)}-{int(m_my.group(1)):02d}"
+        return std_ym, "AUTO_FIXED", f"Chuẩn hóa kỳ tháng: {std_ym}"
+
     formats = [
         "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d",
         "%d.%m.%Y", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M",
@@ -498,13 +511,104 @@ def load_google_sheet_flexible(sheet_url: str) -> Tuple[bool, Dict[str, pd.DataF
     return True, loaded_tabs, classified_tabs, msg
 
 
+def normalize_raw_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Chuẩn hóa cấu trúc bảng thô ngay khi nạp:
+    - Xóa dòng trống hoàn toàn & cột trống hoàn toàn.
+    - Smart Header Detection: nếu >50% tên cột là Unnamed: hoặc số, dò trong 10 dòng đầu dòng tiêu đề thật.
+    - Đảm bảo tên cột duy nhất (_2, _3 nếu trùng) và bỏ khoảng trắng thừa.
+    """
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    out = out.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
+    if out.empty:
+        return out
+
+    # Kiểm tra Smart Header Detection
+    cols = list(out.columns)
+    bad_headers = sum(
+        1 for c in cols
+        if is_unnamed_column(c) or str(c).strip().replace(".", "", 1).isdigit()
+    )
+    if len(cols) > 0 and (bad_headers / len(cols)) > 0.5:
+        for i in range(min(10, len(out))):
+            row_vals = out.iloc[i].tolist()
+            valid_text_cells = [
+                str(v).strip() for v in row_vals
+                if v is not None and not (isinstance(v, float) and pd.isna(v))
+                and str(v).strip() != ""
+                and not str(v).strip().replace(".", "", 1).replace("-", "", 1).isdigit()
+            ]
+            if len(valid_text_cells) >= 2:
+                new_headers = [
+                    " ".join(str(v).strip().split()) if (v is not None and not (isinstance(v, float) and pd.isna(v)) and str(v).strip() != "") else f"Unnamed: {j}"
+                    for j, v in enumerate(row_vals)
+                ]
+                out = out.iloc[i + 1:].reset_index(drop=True)
+                out.columns = new_headers
+                out = out.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
+                break
+
+    # Làm sạch khoảng trắng & khử trùng tên cột
+    seen: Dict[str, int] = {}
+    unique_cols: List[str] = []
+    for j, c in enumerate(out.columns):
+        base = " ".join(str(c).strip().split()) if c is not None else f"Unnamed: {j}"
+        if not base:
+            base = f"Unnamed: {j}"
+        if base in seen:
+            seen[base] += 1
+            unique_cols.append(f"{base}_{seen[base]}")
+        else:
+            seen[base] = 1
+            unique_cols.append(base)
+    out.columns = unique_cols
+    return out
+
+
+def read_csv_smart(file_obj) -> pd.DataFrame:
+    """
+    Đọc file CSV chịu lỗi cao:
+    - Thử lần lượt utf-8-sig, utf-8, cp1258, latin1.
+    - Tự nhận diện dấu phân cách (sep=None, engine='python') và on_bad_lines='warn'.
+    - Áp dụng normalize_raw_dataframe() tự dò tiêu đề thật.
+    """
+    if hasattr(file_obj, "getvalue"):
+        raw_bytes = file_obj.getvalue()
+    elif hasattr(file_obj, "read"):
+        raw_bytes = file_obj.read()
+        if hasattr(file_obj, "seek"):
+            try:
+                file_obj.seek(0)
+            except Exception:
+                pass
+    else:
+        with open(file_obj, "rb") as f:
+            raw_bytes = f.read()
+
+    if isinstance(raw_bytes, str):
+        raw_bytes = raw_bytes.encode("utf-8", errors="replace")
+
+    last_err = None
+    for enc in ["utf-8-sig", "utf-8", "cp1258", "latin1"]:
+        try:
+            text = raw_bytes.decode(enc)
+            df = pd.read_csv(io.StringIO(text), sep=None, engine="python", on_bad_lines="warn")
+            return normalize_raw_dataframe(df)
+        except Exception as exc:
+            last_err = exc
+            continue
+    raise ValueError(f"Không thể đọc file CSV với các bảng mã phổ biến: {last_err}")
+
+
 def load_from_excel_flexible(file_obj) -> Tuple[bool, Dict[str, pd.DataFrame], Dict[str, Any], str]:
     """Nạp dữ liệu từ file Excel tải lên với bất kỳ tên sheet nào."""
     try:
         excel_file = pd.ExcelFile(file_obj)
         loaded_tabs = {}
         for s_name in excel_file.sheet_names:
-            df = pd.read_excel(excel_file, sheet_name=s_name)
+            df = normalize_raw_dataframe(pd.read_excel(excel_file, sheet_name=s_name))
             if not df.empty:
                 loaded_tabs[s_name] = df
 
@@ -733,6 +837,7 @@ class DataCleaner:
         duplicate_rows_count = 0
         tabs_failed_count = 0
 
+        processing_mode = "STANDARD"
         sum_src_net_sales = 0.0
         sum_src_gross_sales = 0.0
         sum_src_cost = 0.0
@@ -793,14 +898,25 @@ class DataCleaner:
                         order_val_col = gross_sales_col
 
                     if not order_val_col:
-                        blocking_count += 1
-                        tx_status["Errors"] += 1
-                        self.errors_log.append({
-                            "Tab": tx_tab_name, "Row_Index": 0, "Order_ID": "GLOBAL",
-                            "Field": "Order_Value", "Error_Type": "MISSING_REQUIRED_COLUMN", "Severity": "CRITICAL",
-                            "Raw_Value": ", ".join(map(str, raw_tx_df.columns)), "Action_Taken": "Chặn quy trình",
-                            "Description": "Thiếu cột doanh thu bắt buộc (Order_Value / Net_Sales_VND / Sales_VND)."
-                        })
+                        fallback_col = find_best_fallback_value_column(raw_tx_df, excluded_cols=set(col_map.keys()))
+                        if fallback_col:
+                            order_val_col = fallback_col
+                            col_map[fallback_col] = "Order_Value"
+                            rev_map["Order_Value"] = fallback_col
+                            self._record_audit(
+                                tx_tab_name, fallback_col, 0, "SCHEMA-FALLBACK",
+                                fallback_col, "Order_Value",
+                                f"Tự động nhận diện cột '{fallback_col}' làm trường giá trị chính theo nội dung số/tiền tệ",
+                                "CONTENT_FALLBACK_MAPPED",
+                            )
+                        else:
+                            processing_mode = "GENERAL_TABULAR"
+                            self._record_audit(
+                                tx_tab_name, "ALL", 0, "MODE",
+                                "STANDARD", "GENERAL_TABULAR",
+                                "Bảng không có cột doanh thu/tiền tệ — bật chế độ chuẩn hóa bảng tổng quát (GENERAL_TABULAR)",
+                                "GENERAL_TABULAR_MODE",
+                            )
 
                     cogs_col = rev_map.get("COGS")
                     profit_col = rev_map.get("Source_Profit")
@@ -815,6 +931,8 @@ class DataCleaner:
                     payment_col = rev_map.get("Payment_Method")
                     csat_col = rev_map.get("Customer_Satisfaction")
                     id_col = rev_map.get("Order_ID")
+                    product_col = rev_map.get("Product_Name")
+                    region_col = rev_map.get("Region")
 
                     if id_col and id_col in raw_tx_df.columns:
                         val_counts = raw_tx_df[id_col].dropna().astype(str).str.strip().value_counts()
@@ -824,11 +942,22 @@ class DataCleaner:
 
                     norm_rows = []
                     seen_dup_ids = set()
+                    seen_order_ids = set()
+                    empty_rows_skipped = 0
                     tx_auto_fixed = 0
                     tx_errors = 0
                     tx_exceptions = 0
 
                     for idx, r in enumerate(raw_tx_df.to_dict("records")):
+                        # Bỏ qua dòng trắng hoàn toàn (tất cả cột đều rỗng/NaN)
+                        if all(clean_text_value(v) is None for v in r.values()):
+                            empty_rows_skipped += 1
+                            self._record_audit(
+                                tx_tab_name, "ALL", idx + 1, f"ROW-{idx+1}",
+                                "", "SKIPPED", "Bỏ qua dòng trắng hoàn toàn", "EMPTY_ROW_SKIPPED"
+                            )
+                            continue
+
                         row_has_exception = False
 
                         # 1.1 Chuẩn hóa Order_ID
@@ -839,20 +968,20 @@ class DataCleaner:
                             clean_order_id = f"ORD-{idx+1:04d}" if not id_col else f"TEMP-UNKNOWN-{idx+1}"
                             if id_col:
                                 missing_fields_count += 1
-                                blocking_count += 1
+                                exception_count += 1
                                 tx_errors += 1
                                 tx_exceptions += 1
                                 row_has_exception = True
                                 self.errors_log.append({
                                     "Tab": tx_tab_name, "Row_Index": idx+1, "Order_ID": clean_order_id,
-                                    "Field": "Order_ID", "Error_Type": "MISSING_ORDER_ID", "Severity": "CRITICAL",
+                                    "Field": "Order_ID", "Error_Type": "MISSING_ORDER_ID", "Severity": "HIGH",
                                     "Raw_Value": str(raw_id_val), "Action_Taken": "Gán mã tạm thời & Đưa vào Exceptions",
                                     "Description": "Thiếu mã đơn hàng bắt buộc tại dòng dữ liệu"
                                 })
                                 self.exceptions_view.append({
                                     "Order_ID": clean_order_id, "Campaign_ID": "N/A", "Error_Type": "MISSING_ORDER_ID",
                                     "Raw_Value": str(raw_id_val), "Normalized_Value": clean_order_id,
-                                    "Severity": "CRITICAL", "Error_Description": f"Dòng {idx+1}: Thiếu mã đơn hàng",
+                                    "Severity": "HIGH", "Error_Description": f"Dòng {idx+1}: Thiếu mã đơn hàng",
                                     "Proposed_Action": "Yêu cầu rà soát đối soát nguồn và bổ sung mã đơn",
                                     "Approval_Status": "PENDING_REVIEW", "Reviewer": "Chưa duyệt", "Review_Time": "N/A", "Note": ""
                                 })
@@ -881,34 +1010,40 @@ class DataCleaner:
                                 self._record_audit(tx_tab_name, "Order_ID", idx+1, clean_order_id, raw_id_val, clean_order_id, "Phát hiện trùng mã đơn", "DUPLICATE_DETECTED")
 
                         # 1.2 Chuẩn hóa Doanh thu thuần (Order_Value / Net Sales)
-                        raw_order_val = r.get(order_val_col) if order_val_col else None
-                        clean_val, val_status, val_desc = parse_currency_value(raw_order_val)
-                        if val_status == "AUTO_FIXED":
-                            auto_fixed_count += 1
-                            tx_auto_fixed += 1
-                            self._record_audit(tx_tab_name, "Order_Value", idx+1, clean_order_id, raw_order_val, clean_val, val_desc, "CURRENCY_NORMALIZED")
-                        elif "EXCEPTION" in val_status:
-                            if val_status == "EXCEPTION_MISSING":
-                                missing_fields_count += 1
-                            exception_count += 1
-                            tx_errors += 1
-                            tx_exceptions += 1
-                            row_has_exception = True
-                            self.errors_log.append({
-                                "Tab": tx_tab_name, "Row_Index": idx+1, "Order_ID": clean_order_id,
-                                "Field": "Order_Value", "Error_Type": val_status, "Severity": "HIGH",
-                                "Raw_Value": str(raw_order_val), "Action_Taken": "Giữ nguyên giá trị và đưa vào Exceptions",
-                                "Description": val_desc
-                            })
-                            self.exceptions_view.append({
-                                "Order_ID": clean_order_id, "Campaign_ID": "N/A", "Error_Type": val_status,
-                                "Raw_Value": str(raw_order_val), "Normalized_Value": str(clean_val),
-                                "Severity": "HIGH", "Error_Description": f"Đơn {clean_order_id}: {val_desc}",
-                                "Proposed_Action": "Xác minh giá trị doanh thu chính xác",
-                                "Approval_Status": "PENDING_REVIEW", "Reviewer": "Chưa duyệt", "Review_Time": "N/A", "Note": ""
-                            })
-                            self._record_audit(tx_tab_name, "Order_Value", idx+1, clean_order_id, raw_order_val, clean_val, val_desc, "NEEDS_APPROVAL")
+                        if processing_mode == "GENERAL_TABULAR" and not order_val_col:
+                            clean_val = 0.0
+                            val_status = "GENERAL_TABULAR"
+                            val_desc = "Chế độ bảng tổng quát"
+                        else:
+                            raw_order_val = r.get(order_val_col) if order_val_col else None
+                            clean_val, val_status, val_desc = parse_currency_value(raw_order_val)
+                            if val_status == "AUTO_FIXED":
+                                auto_fixed_count += 1
+                                tx_auto_fixed += 1
+                                self._record_audit(tx_tab_name, "Order_Value", idx+1, clean_order_id, raw_order_val, clean_val, val_desc, "CURRENCY_NORMALIZED")
+                            elif "EXCEPTION" in val_status:
+                                if val_status == "EXCEPTION_MISSING":
+                                    missing_fields_count += 1
+                                exception_count += 1
+                                tx_errors += 1
+                                tx_exceptions += 1
+                                row_has_exception = True
+                                self.errors_log.append({
+                                    "Tab": tx_tab_name, "Row_Index": idx+1, "Order_ID": clean_order_id,
+                                    "Field": "Order_Value", "Error_Type": val_status, "Severity": "HIGH",
+                                    "Raw_Value": str(raw_order_val), "Action_Taken": "Giữ nguyên giá trị và đưa vào Exceptions",
+                                    "Description": val_desc
+                                })
+                                self.exceptions_view.append({
+                                    "Order_ID": clean_order_id, "Campaign_ID": "N/A", "Error_Type": val_status,
+                                    "Raw_Value": str(raw_order_val), "Normalized_Value": str(clean_val),
+                                    "Severity": "HIGH", "Error_Description": f"Đơn {clean_order_id}: {val_desc}",
+                                    "Proposed_Action": "Xác minh giá trị doanh thu chính xác",
+                                    "Approval_Status": "PENDING_REVIEW", "Reviewer": "Chưa duyệt", "Review_Time": "N/A", "Note": ""
+                                })
+                                self._record_audit(tx_tab_name, "Order_Value", idx+1, clean_order_id, raw_order_val, clean_val, val_desc, "NEEDS_APPROVAL")
 
+                        raw_order_val = r.get(order_val_col) if order_val_col else None
                         actual_norm_val = clean_val  # Không biến dữ liệu không xác định thành 0
                         if clean_val is not None:
                             sum_norm_order_value += clean_val
@@ -1168,7 +1303,15 @@ class DataCleaner:
                                     "Description": f"Chênh lệch công thức Gross - Discount ({expected_net:,.0f}) != Net Sales ({clean_val:,.0f})"
                                 })
 
+                        is_duplicate_copy = clean_order_id in seen_order_ids
+                        seen_order_ids.add(clean_order_id)
+
+                        clean_product = clean_text_value(r.get(product_col)) if product_col else None
+                        clean_region = clean_text_value(r.get(region_col)) if region_col else None
+
                         row_dict = {
+                            "Row_Index": idx + 1,
+                            "Is_Duplicate_Copy": is_duplicate_copy,
                             "Order_ID": clean_order_id,
                             "Raw_Order_ID": str(raw_id_val) if raw_id_val is not None else clean_order_id,
                             "Order_Value": actual_norm_val,
@@ -1200,13 +1343,40 @@ class DataCleaner:
                             "Shipping_Days": clean_ship_days,
                             "Payment_Method": clean_payment,
                             "Customer_Satisfaction": clean_csat,
+                            "Product_Name": clean_product,
+                            "Region": clean_region,
                             "Has_Exception": row_has_exception,
                             "Run_ID": self.run_id
                         }
 
+                        # Pre-profile Extra columns once outside loop? Compute safely per cell:
                         for col in raw_tx_df.columns:
                             if col not in col_map and f"Extra_{col}" not in row_dict:
-                                row_dict[f"Extra_{col}"] = r.get(col)
+                                raw_extra = r.get(col)
+                                col_l = normalize_column_name(col)
+                                is_d_col = any(k in col_l for k in ["ngay", "date", "time", "created", "thang"])
+                                if raw_extra is None or (isinstance(raw_extra, float) and pd.isna(raw_extra)):
+                                    row_dict[f"Extra_{col}"] = None
+                                elif is_d_col:
+                                    d_val, d_st, _ = parse_date_value(raw_extra)
+                                    if d_st == "AUTO_FIXED" and d_val is not None:
+                                        row_dict[f"Extra_{col}"] = d_val
+                                        auto_fixed_count += 1
+                                        tx_auto_fixed += 1
+                                        self._record_audit(tx_tab_name, f"Extra_{col}", idx + 1, clean_order_id, raw_extra, d_val, "Chuẩn hóa ngày cột mở rộng", "DATE_NORMALIZED")
+                                    elif d_val is not None:
+                                        row_dict[f"Extra_{col}"] = d_val
+                                    else:
+                                        row_dict[f"Extra_{col}"] = clean_text_value(raw_extra)
+                                elif isinstance(raw_extra, str):
+                                    trimmed = clean_text_value(raw_extra)
+                                    if trimmed is not None and trimmed != raw_extra:
+                                        auto_fixed_count += 1
+                                        tx_auto_fixed += 1
+                                        self._record_audit(tx_tab_name, f"Extra_{col}", idx + 1, clean_order_id, raw_extra, trimmed, "Loại bỏ khoảng trắng thừa cột mở rộng", "TRIM_WHITESPACE")
+                                    row_dict[f"Extra_{col}"] = trimmed
+                                else:
+                                    row_dict[f"Extra_{col}"] = raw_extra
 
                         norm_rows.append(row_dict)
 
@@ -1217,7 +1387,7 @@ class DataCleaner:
                     diff_cogs = abs(sum_src_cost - sum_norm_cogs)
                     diff_profit = abs(sum_src_profit - sum_norm_profit)
                     diff_gross = abs(sum_src_gross_sales - sum_norm_gross_sales)
-                    rows_match = (len(raw_tx_df) == len(norm_rows))
+                    rows_match = ((len(raw_tx_df) - empty_rows_skipped) == len(norm_rows))
 
                     self.reconciliation_table = [
                         {
@@ -1500,7 +1670,7 @@ class DataCleaner:
         critical_issues = len([e for e in self.errors_log if e["Severity"] == "CRITICAL"])
 
         quality_score = max(0.0, min(100.0, 100.0 - (total_issues / max(1, total_records)) * 40.0))
-        can_proceed = (critical_issues == 0 and clean_tx_count > 0 and sum_norm_order_value > 0)
+        can_proceed = (critical_issues == 0 and clean_tx_count > 0 and (sum_norm_order_value > 0 or processing_mode == "GENERAL_TABULAR"))
 
         if not can_proceed or critical_issues > 0 or tabs_failed_count > 0:
             overall_status = "FAILED"
@@ -1515,6 +1685,7 @@ class DataCleaner:
 
         self.quality_summary = {
             "Run_ID": self.run_id,
+            "Processing_Mode": processing_mode,
             "Total_Tabs_Count": len(self.raw_tabs),
             "Tabs_Processed_Count": len(processed_tab_names),
             "Tabs_Failed_Count": tabs_failed_count,

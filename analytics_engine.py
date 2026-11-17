@@ -5,6 +5,27 @@ import pandas as pd
 import numpy as np
 
 
+def is_valid_num(val: Any) -> bool:
+    """Kiểm tra giá trị số hợp lệ (không phải None và không phải NaN)."""
+    if val is None:
+        return False
+    try:
+        return not bool(pd.isna(val))
+    except Exception:
+        return False
+
+
+def safe_float(val: Any, default: float = 0.0) -> float:
+    """Chuyển đổi an toàn sang float, trả về default nếu None/NaN hoặc lỗi."""
+    if not is_valid_num(val):
+        return default
+    try:
+        f = float(val)
+        return default if pd.isna(f) else f
+    except Exception:
+        return default
+
+
 class MarketingAnalyticsEngine:
     """
     Động cơ phân tích hiệu quả chiến dịch Marketing & Kiểm toán tài chính:
@@ -143,33 +164,58 @@ class MarketingAnalyticsEngine:
             self.log("Step 1: Centralization", "FAILED", f"Lỗi tập trung dữ liệu: {str(e)}")
             return {"name": "BƯỚC 1: Tập trung dữ liệu", "status": "FAILED", "error": str(e)}
 
+    def get_active_transactions_df(self) -> Optional[pd.DataFrame]:
+        """
+        Trả về bảng Normalized_Transactions đã loại trừ các bản ghi bị từ chối:
+        - Nếu là ngoại lệ DUPLICATE_ORDER_ID bị REJECTED / CORRECTION_REQUESTED: chỉ loại bản sao (Is_Duplicate_Copy == True), giữ nguyên bản gốc.
+        - Các ngoại lệ khác bị REJECTED / CORRECTION_REQUESTED: loại theo Order_ID.
+        """
+        df_tx = self.data.get("Normalized_Transactions", self.data.get("Transactions"))
+        if df_tx is None or df_tx.empty:
+            return df_tx
+
+        dup_rejected_ids = set(
+            e["Order_ID"] for e in self.exceptions_view
+            if e.get("Error_Type") == "DUPLICATE_ORDER_ID"
+            and e.get("Approval_Status") in ("REJECTED", "CORRECTION_REQUESTED")
+        )
+        other_rejected_ids = set(
+            e["Order_ID"] for e in self.exceptions_view
+            if e.get("Error_Type") != "DUPLICATE_ORDER_ID"
+            and e.get("Approval_Status") in ("REJECTED", "CORRECTION_REQUESTED")
+        )
+
+        mask = pd.Series(True, index=df_tx.index)
+        if other_rejected_ids:
+            mask &= ~df_tx["Order_ID"].isin(other_rejected_ids)
+        if dup_rejected_ids:
+            if "Is_Duplicate_Copy" in df_tx.columns:
+                mask &= ~(df_tx["Order_ID"].isin(dup_rejected_ids) & (df_tx["Is_Duplicate_Copy"] == True))
+            else:
+                # Fallback nếu dữ liệu cũ không có cột Is_Duplicate_Copy: giữ dòng đầu tiên của mỗi Order_ID
+                is_dup_copy = df_tx.duplicated(subset=["Order_ID"], keep="first")
+                mask &= ~(df_tx["Order_ID"].isin(dup_rejected_ids) & is_dup_copy)
+        return df_tx[mask].copy()
+
     # --- Bước 2: Multi-touch Revenue Attribution ---
     def _step2_revenue_attribution(self, df_tx: pd.DataFrame) -> Dict[str, Any]:
         self.log("Step 2: Revenue Attribution", "RUNNING", "Đang tính phân bổ doanh thu đa điểm chạm (Multi-touch Attribution)...")
         try:
-            # Lấy danh sách các đơn bị từ chối phê duyệt (REJECTED) để loại trừ khỏi phân bổ
-            rejected_order_ids = set(
-                e["Order_ID"] for e in self.exceptions_view
-                if e.get("Approval_Status") == "REJECTED"
-            )
+            active_df = self.get_active_transactions_df()
+            if active_df is None:
+                active_df = df_tx
 
             attributed_rows = []
             total_source_revenue = 0.0
             total_attributed_revenue = 0.0
             unattributed_orders_count = 0
 
-            for _, r in df_tx.iterrows():
+            for _, r in active_df.iterrows():
                 order_id = r["Order_ID"]
-                raw_ov = r.get("Order_Value")
-                order_val = 0.0 if (raw_ov is None or pd.isna(raw_ov)) else float(raw_ov)
-                raw_cg = r.get("COGS")
-                cogs = 0.0 if (raw_cg is None or pd.isna(raw_cg)) else float(raw_cg)
+                order_val = safe_float(r.get("Order_Value"), 0.0)
+                cogs = safe_float(r.get("COGS"), 0.0)
                 order_date = r.get("Order_Date")
                 channel = r.get("Channel", "Unknown")
-
-                # Nếu đơn hàng bị Trưởng phòng từ chối phê duyệt, bỏ qua không phân bổ
-                if order_id in rejected_order_ids:
-                    continue
 
                 total_source_revenue += order_val
 
@@ -752,9 +798,8 @@ class MarketingAnalyticsEngine:
         # CHK-04: Đối soát tổng doanh thu phân bổ với doanh thu nguồn
         if self.detailed_attributed_df is not None:
             total_attr = self.detailed_attributed_df["Attributed_Revenue"].sum()
-            # Doanh thu nguồn chỉ tính các đơn hợp lệ không bị từ chối
-            rejected_ids = set(e["Order_ID"] for e in self.exceptions_view if e.get("Approval_Status") == "REJECTED")
-            valid_source = float(pd.to_numeric(df_tx[~df_tx["Order_ID"].isin(rejected_ids)]["Order_Value"], errors="coerce").fillna(0.0).sum()) if df_tx is not None else 0.0
+            active_df = self.get_active_transactions_df()
+            valid_source = float(pd.to_numeric(active_df["Order_Value"], errors="coerce").fillna(0.0).sum()) if active_df is not None else 0.0
             diff_rev = abs(valid_source - total_attr)
             t4_pass = (diff_rev < 0.01)
             tests.append({
@@ -824,8 +869,12 @@ class MarketingAnalyticsEngine:
         # CHK-07: Đối soát chi phí và Net Contribution
         if has_costs and self.report_result is not None:
             df_res = self.report_result
-            # Kiểm tra công thức: Net_Contribution == Net_Sales - COGS - Total_Cost
-            calc_diff = abs((df_res["Net_Sales"] - df_res["Attributed_COGS"] - df_res["Total_Cost"]) - df_res["Net_Contribution"]).max()
+            ns_s = pd.to_numeric(df_res["Net_Sales"], errors="coerce").fillna(0.0)
+            cg_s = pd.to_numeric(df_res["Attributed_COGS"], errors="coerce").fillna(0.0)
+            tc_s = pd.to_numeric(df_res["Total_Cost"], errors="coerce").fillna(0.0)
+            nc_s = pd.to_numeric(df_res["Net_Contribution"], errors="coerce").fillna(0.0)
+            diff_series = abs((ns_s - cg_s - tc_s) - nc_s)
+            calc_diff = safe_float(diff_series.max(), 0.0) if not diff_series.empty else 0.0
             t7_pass = (calc_diff < 0.01)
             tests.append({
                 "code": "CHK-07",
@@ -906,10 +955,10 @@ class MarketingAnalyticsEngine:
                 <td style="text-align:right; color:#DC2626;">{ret:,.0f} đ</td>
                 <td style="text-align:right; color:#475569;">{cogs:,.0f} đ</td>
                 <td style="text-align:right; font-weight:600; color:#2563EB;">{ns:,.0f} đ</td>
-                <td style="text-align:right;">{f"{cost:,.0f} đ" if cost is not None else "<i>Chưa có</i>"}</td>
-                <td style="text-align:right; font-weight:700; color:{'#10B981' if (nc and nc>0) else '#EF4444'};">{f"{nc:,.0f} đ" if nc is not None else "<i>Chưa có</i>"}</td>
-                <td style="text-align:center;">{f"{roas:.2f}x" if roas is not None else "N/A"}</td>
-                <td style="text-align:center;">{f"{roi:+.1f}%" if roi is not None else "N/A"}</td>
+                <td style="text-align:right;">{f"{cost:,.0f} đ" if is_valid_num(cost) else "<i>Chưa có</i>"}</td>
+                <td style="text-align:right; font-weight:700; color:{'#10B981' if (is_valid_num(nc) and safe_float(nc) > 0) else '#EF4444'};">{f"{nc:,.0f} đ" if is_valid_num(nc) else "<i>Chưa có</i>"}</td>
+                <td style="text-align:center;">{f"{roas:.2f}x" if is_valid_num(roas) else "N/A"}</td>
+                <td style="text-align:center;">{f"{roi:+.1f}%" if is_valid_num(roi) else "N/A"}</td>
                 <td style="text-align:center;"><span style="background:{badge_color}; color:#FFF; font-size:11px; font-weight:600; padding:4px 8px; border-radius:6px;">{dec.split(' ')[0]}</span></td>
             </tr>
             """

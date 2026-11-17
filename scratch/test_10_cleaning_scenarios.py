@@ -99,8 +99,9 @@ print(f"[PASS] Test 5 (Duplicates preserved & flagged): Rows={len(norm5['Normali
 messy_tabs = get_messy_testcase_08_data()
 cleaner6 = DataCleaner(messy_tabs)
 can6, norm6, q6, err6, exc6 = cleaner6.clean_and_normalize()
+assert can6 is True, "MISSING_ORDER_ID phải cho phép đi tiếp sang Human-in-the-Loop"
 assert q6["Exceptions_Count"] > 0 and q6["Missing_Fields_Count"] > 0
-assert q6["Status"] == "FAILED"
+assert q6["Status"] == "NEEDS_APPROVAL"
 print(f"[PASS] Test 6 (Missing & Exceptions): Missing={q6['Missing_Fields_Count']}, Exceptions={q6['Exceptions_Count']}, Status={q6['Status']}")
 
 # ------------------------------------------------------------------

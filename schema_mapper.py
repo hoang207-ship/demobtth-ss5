@@ -34,7 +34,8 @@ SCHEMA_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "synonyms": [
             "ma don hang", "ma don", "don hang", "order id", "orderid", "order no",
             "order number", "id don hang", "so hoa don", "so don hang", "ma dh",
-            "order", "ma hoa don", "order code", "transaction id", "trans id", "id"
+            "order", "ma hoa don", "order code", "transaction id", "trans id", "id",
+            "ma dong"
         ],
         "keywords": ["ma", "don"]
     },
@@ -46,7 +47,7 @@ SCHEMA_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "synonyms": [
             "ngay dat hang", "ngay dat", "ngay ban", "ngay don", "ngay tao",
             "ngay", "order date", "orderdate", "date", "created at", "trans date",
-            "thoi gian dat", "thoi gian", "ngay giao dich"
+            "thoi gian dat", "thoi gian", "ngay giao dich", "thang", "ky bao cao", "month"
         ],
         "keywords": ["ngay", "date"]
     },
@@ -60,7 +61,7 @@ SCHEMA_SYNONYMS: Dict[str, Dict[str, Any]] = {
             "doanh thu thuan", "doanh thu sau giam gia", "doanh thu sau chiet khau",
             "gia tri don", "gia tri don hang", "doanh thu don", "doanh thu", "gia tri",
             "tong tien", "thanh tien", "tien hang", "order value", "ordervalue",
-            "amount", "order amount", "total amount", "tong gia tri", "revenue"
+            "amount", "order amount", "total amount", "tong gia tri", "revenue", "doanh thu vnd"
         ],
         "keywords": ["net", "sales", "gia", "tri", "don"]
     },
@@ -125,9 +126,9 @@ SCHEMA_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "required": False,
         "tab": "Transactions",
         "priority": 8,
-        "description": "Số lượng sản phẩm bán",
+        "description": "Số lượng sản phẩm / số đơn",
         "synonyms": [
-            "quantity", "so luong", "qty", "sl", "so luong ban", "so luong sp"
+            "quantity", "so luong", "qty", "sl", "so luong ban", "so luong sp", "so don"
         ],
         "keywords": ["quantity", "so", "luong"]
     },
@@ -138,9 +139,29 @@ SCHEMA_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "description": "Đơn giá sản phẩm (Unit Price VND)",
         "synonyms": [
             "unit price vnd", "unit price", "don gia", "gia don vi", "gia ban le",
-            "gia san pham", "price vnd", "price"
+            "gia ban", "price vnd", "price"
         ],
         "keywords": ["unit", "price", "don", "gia"]
+    },
+    "Product_Name": {
+        "required": False,
+        "tab": "Transactions",
+        "priority": 8,
+        "description": "Tên sản phẩm / mặt hàng",
+        "synonyms": [
+            "san pham", "ten san pham", "product name", "product", "ten sp", "mat hang"
+        ],
+        "keywords": ["san", "pham"]
+    },
+    "Region": {
+        "required": False,
+        "tab": "Transactions",
+        "priority": 8,
+        "description": "Khu vực / vùng bán hàng",
+        "synonyms": [
+            "khu vuc", "vung", "region", "mien", "khu vuc ban"
+        ],
+        "keywords": ["khu", "vuc"]
     },
     "Channel": {
         "required": False,
@@ -393,13 +414,50 @@ def is_unnamed_column(col_name: Any) -> bool:
     return s == "" or s.lower().startswith("unnamed:")
 
 
+_VALUE_COL_KEYWORDS = ("tien", "gia", "amount", "total", "rev", "sales", "val", "price", "luong", "chi", "thu")
+_ID_YEAR_KEYWORDS = ("id", "ma", "nam", "year", "stt", "index", "phone", "sdt", "zip")
+
+
+def find_best_fallback_value_column(df: pd.DataFrame, excluded_cols: Optional[set] = None) -> Optional[str]:
+    """
+    Content-Based Fallback: tìm cột chứa giá trị số/tiền tệ phù hợp nhất làm Order_Value
+    khi không có cột nào khớp tên chuẩn. Trả về None nếu bảng là dữ liệu phi tài chính.
+    """
+    if df is None or df.empty:
+        return None
+    excluded = excluded_cols or set()
+    kw_candidates: List[Tuple[float, str]] = []
+    num_candidates: List[Tuple[float, str]] = []
+
+    for col in df.columns:
+        if col in excluded or is_unnamed_column(col):
+            continue
+        col_norm = normalize_column_name(col)
+        if any(k in col_norm.split() for k in _ID_YEAR_KEYWORDS):
+            continue
+        prof = infer_column_semantics(df[col])
+        if prof["currency_ratio"] >= 0.5:
+            if any(k in col_norm for k in _VALUE_COL_KEYWORDS):
+                kw_candidates.append((prof["currency_ratio"], col))
+            else:
+                num_candidates.append((prof["currency_ratio"], col))
+
+    if kw_candidates:
+        kw_candidates.sort(key=lambda x: x[0], reverse=True)
+        return kw_candidates[0][1]
+    if num_candidates:
+        num_candidates.sort(key=lambda x: x[0], reverse=True)
+        return num_candidates[0][1]
+    return None
+
+
 class AutoSchemaMapper:
     """
     Module tự động nhận diện và ánh xạ cột dữ liệu tiếng Việt / tiếng Anh về Schema chuẩn nội bộ.
     Bảo toàn toàn bộ thông tin nguồn, không làm mất dữ liệu.
     """
 
-    def __init__(self, confidence_threshold: float = 0.75):
+    def __init__(self, confidence_threshold: float = 0.85):
         self.confidence_threshold = confidence_threshold
 
     def calculate_match_score(self, raw_col_norm: str, standard_field: str, field_meta: Dict[str, Any]) -> Tuple[float, str]:
@@ -442,7 +500,7 @@ class AutoSchemaMapper:
         for syn in synonyms:
             if syn in raw_col_norm or raw_col_norm in syn:
                 ratio = len(syn) / max(len(raw_col_norm), len(syn))
-                if ratio >= 0.65:
+                if ratio >= 0.75:
                     return 0.90, "SUBSTRING_SYNONYM"
 
         # 4. So khớp bộ từ khóa (keywords)

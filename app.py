@@ -12,6 +12,8 @@ from data_pipeline import (
     get_ecommerce_user_data,
     load_google_sheet_flexible,
     load_from_excel_flexible,
+    read_csv_smart,
+    normalize_raw_dataframe,
     DataCleaner,
 )
 from analytics_engine import MarketingAnalyticsEngine
@@ -40,7 +42,7 @@ PAGES = [
     "Cài Đặt Settings",
 ]
 
-CHART_COLORS = ["#6366F1", "#EC4899", "#10B981", "#F59E0B", "#06B6D4", "#8B5CF6", "#F43F5E"]
+CHART_COLORS = ["#E21A3C", "#2563EB", "#F59E0B", "#7C3AED", "#10B981", "#06B6D4", "#FB7185"]
 
 # ==============================================================================
 # DESIGN SYSTEM (CSS)
@@ -53,75 +55,68 @@ html, body, [class*="css"], .stApp, button, input, textarea, select {
     font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
 
-/* ---------- Nền & khung (Warm Peach-to-Aqua Spatial Glass) ---------- */
+/* ---------- Nền & khung (Corporate Light Gray-White + Crimson Red Accent) ---------- */
 .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
-    background:
-        radial-gradient(circle at 8% 12%, rgba(251,146,60,.16) 0%, transparent 40%),
-        radial-gradient(circle at 92% 14%, rgba(56,189,248,.18) 0%, transparent 42%),
-        radial-gradient(circle at 82% 88%, rgba(45,212,191,.15) 0%, transparent 42%),
-        radial-gradient(circle at 14% 88%, rgba(244,114,182,.12) 0%, transparent 42%),
-        #F3F7FB !important;
+    background: #F4F6FA !important;
     color: #0F172A;
 }
 header[data-testid="stHeader"] { display: none !important; }
 
 .main .block-container, [data-testid="stMainBlockContainer"] {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(22px);
-    -webkit-backdrop-filter: blur(22px);
-    border-radius: 30px;
-    border: 1px solid rgba(255, 255, 255, 0.92);
-    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.06), 0 2px 12px rgba(15, 23, 42, 0.03);
-    padding: 26px 34px 40px 34px !important;
-    margin: 18px auto 26px auto;
-    max-width: 97% !important;
+    background: #F8FAFC;
+    border-radius: 24px;
+    border: 1px solid #E8ECF4;
+    box-shadow: 0 12px 36px rgba(15, 23, 42, 0.04);
+    padding: 20px 28px 34px 28px !important;
+    margin: 14px auto 22px auto;
+    max-width: 98% !important;
 }
 
 /* ---------- Hiệu ứng chuyển động mượt ---------- */
-@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-[class*="st-key-card"], .kpi-card, .hero-glass, .phase-bar, .top-glass-bar { animation: fadeUp .32s ease-out both; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+[class*="st-key-card"], .kpi-card, .hero-glass, .phase-bar, .top-glass-bar { animation: fadeUp .28s ease-out both; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
-/* ---------- Dark Frosted Glass Sidebar ---------- */
-[data-testid="stSidebar"] { background: transparent !important; border-right: none !important; }
+/* ---------- Clean White Sidebar với Header Đỏ Đô & Banner Đỏ dưới đáy ---------- */
+[data-testid="stSidebar"] {
+    background: #FFFFFF !important;
+    border-right: 1px solid #EAECEF !important;
+}
 [data-testid="stSidebarContent"] {
-    background: linear-gradient(180deg, rgba(58,63,74,.94) 0%, rgba(42,46,56,.96) 100%) !important;
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border-radius: 26px;
-    margin: 18px 0 18px 16px;
-    padding: 22px 16px 20px 16px;
-    border: 1px solid rgba(255,255,255,.16);
-    box-shadow: 0 24px 54px rgba(15,23,42,.28);
-    height: calc(100vh - 36px);
-    color: #F8FAFC;
+    background: #FFFFFF !important;
+    border-radius: 0;
+    margin: 0;
+    padding: 0 14px 18px 14px;
+    border: none;
+    box-shadow: none;
+    color: #1E293B;
 }
-.brand { display: flex; align-items: center; gap: 12px; padding: 4px 4px 16px 4px; border-bottom: 1px solid rgba(255,255,255,.10); margin-bottom: 14px; }
-.brand-logo {
-    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, #FB923C 0%, #EA580C 100%);
-    color: #FFFFFF; font-weight: 800; font-size: 14px;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 6px 18px rgba(234,88,12,.45);
+.brand-red-banner {
+    background: linear-gradient(135deg, #E21A3C 0%, #B80C29 100%);
+    margin: 0 -14px 14px -14px;
+    padding: 20px 18px 18px 18px;
+    color: #FFFFFF;
+    border-bottom-right-radius: 18px;
+    box-shadow: 0 8px 20px rgba(226, 26, 60, 0.22);
 }
-.brand-title { font-size: 16px; font-weight: 800; letter-spacing: -.3px; line-height: 1.15; color: #FFFFFF; }
-.brand-sub { font-size: 11px; font-weight: 600; color: #94A3B8; margin-top: 2px; }
-.nav-caption { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #94A3B8; margin: 8px 8px 8px 8px; }
+.brand-red-title { font-size: 21px; font-weight: 800; letter-spacing: -.4px; line-height: 1.05; color: #FFFFFF; }
+.brand-red-sub { font-size: 11.5px; font-weight: 600; color: rgba(255,255,255,.88); margin-top: 3px; }
+.nav-caption { font-size: 10px; font-weight: 800; letter-spacing: .9px; color: #94A3B8; margin: 6px 6px 8px 6px; }
 
 /* ---------- Menu điều hướng: nút chữ nhật bo tròn, không icon, active hồng nhạt ---------- */
 [data-testid="stSidebar"] [data-testid="stRadio"] > label { display: none !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] { gap: 6px !important; width: 100%; }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label {
-    background: rgba(255, 255, 255, 0.05) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #FFFFFF !important;
+    border: 1px solid #EDF0F5 !important;
     border-radius: 14px !important;
     padding: 10px 15px !important;
     margin: 0 !important;
     width: 100% !important;
     box-sizing: border-box;
     cursor: pointer;
-    color: #E2E8F0 !important;
-    transition: background .2s ease, border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+    color: #334155 !important;
+    transition: background .18s ease, border-color .18s ease, transform .18s ease, box-shadow .18s ease;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"],
 [data-testid="stSidebar"] [data-testid="stRadio"] [class*="ex50key4"] { display: none !important; }
@@ -129,119 +124,118 @@ header[data-testid="stHeader"] { display: none !important; }
     font-size: 13px !important; font-weight: 600 !important; color: inherit !important; margin: 0 !important;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:hover {
-    background: rgba(255, 255, 255, 0.13) !important; border-color: rgba(255, 255, 255, 0.25) !important; color: #FFFFFF !important; transform: translateX(3px);
+    background: #FFF1F3 !important; border-color: #FECDD3 !important; color: #E21A3C !important; transform: translateX(2px);
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
     background: #FFE4E8 !important;
     border: 1.5px solid #FDA4AF !important;
     color: #BE123C !important;
-    box-shadow: 0 8px 20px rgba(244, 63, 94, 0.25);
-    transform: translateX(3px);
+    box-shadow: 0 6px 16px rgba(226, 26, 60, 0.14);
+    transform: translateX(2px);
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p { font-weight: 700 !important; }
 
-/* ---------- Tiến độ & Admin card trong dark sidebar ---------- */
+/* ---------- Tiến độ & Banner đỏ đáy sidebar ---------- */
 .side-progress {
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 16px;
-    padding: 12px 14px;
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    padding: 12px 13px;
     margin-top: 14px;
 }
-.side-progress-title { font-size: 10px; font-weight: 800; letter-spacing: .9px; color: #94A3B8; margin-bottom: 8px; }
-.side-row { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; font-weight: 600; color: #E2E8F0; margin-bottom: 6px; }
-.side-admin {
-    margin-top: 12px;
-    background: rgba(255, 255, 255, 0.09);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+.side-progress-title { font-size: 10px; font-weight: 800; letter-spacing: .8px; color: #64748B; margin-bottom: 8px; }
+.side-row { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+.side-promo-red {
+    margin-top: 14px;
     border-radius: 16px;
-    padding: 10px 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    padding: 16px 16px;
+    color: #FFFFFF;
+    background: linear-gradient(135deg, #E21A3C 0%, #9F0B24 100%);
+    box-shadow: 0 10px 24px rgba(226, 26, 60, 0.24);
 }
-.side-admin-avatar {
-    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, #FB923C 0%, #EA580C 100%);
-    color: #FFF; font-weight: 800; font-size: 12px;
-    display: flex; align-items: center; justify-content: center;
-}
-.side-admin-name { font-size: 12.5px; font-weight: 700; color: #FFFFFF; line-height: 1.2; }
-.side-admin-sub { font-size: 10.5px; color: #CBD5E1; }
+.side-promo-title { font-size: 15px; font-weight: 800; line-height: 1.25; margin-bottom: 4px; }
+.side-promo-sub { font-size: 11px; opacity: .88; }
 
 .badge { font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 20px; border: 1px solid; white-space: nowrap; }
-.badge.ok { background: rgba(220,252,231,.95); color: #15803D; border-color: #86EFAC; }
-.badge.warn { background: rgba(254,243,199,.95); color: #B45309; border-color: #FCD34D; }
-.badge.fail { background: rgba(254,226,226,.95); color: #B91C1C; border-color: #FCA5A5; }
-.badge.idle { background: rgba(241,245,249,.92); color: #475569; border-color: #CBD5E1; }
+.badge.ok { background: #DCFCE7; color: #15803D; border-color: #86EFAC; }
+.badge.warn { background: #FEF3C7; color: #B45309; border-color: #FCD34D; }
+.badge.fail { background: #FEE2E2; color: #B91C1C; border-color: #FCA5A5; }
+.badge.idle { background: #F1F5F9; color: #475569; border-color: #CBD5E1; }
 
-/* ---------- Top Glass Bar & Page Header ---------- */
+/* ---------- Top Header Bar (Tìm kiếm + Chuông + Admin) ---------- */
 .top-glass-bar {
     display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
-    background: rgba(255, 255, 255, 0.86);
-    border: 1px solid rgba(255, 255, 255, 0.95);
-    border-radius: 18px;
-    padding: 10px 16px;
+    background: #FFFFFF;
+    border: 1px solid #E8ECF4;
+    border-radius: 16px;
+    padding: 10px 18px;
     margin-bottom: 16px;
-    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
-}
-.top-ws { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: #0F172A; }
-.top-ws-badge {
-    width: 28px; height: 28px; border-radius: 50%; background: #0F172A; color: #FFF;
-    font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.03);
 }
 .top-search {
-    flex: 1; min-width: 220px; max-width: 380px;
-    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;
-    padding: 7px 14px; font-size: 12px; color: #64748B;
+    flex: 1; min-width: 240px; max-width: 520px;
+    background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 12px;
+    padding: 8px 14px; font-size: 12.5px; color: #64748B;
 }
-.top-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.agent-pill {
-    background: #ECFDF5; border: 1px solid #A7F3D0; color: #047857;
-    border-radius: 20px; padding: 5px 12px; font-size: 11.5px; font-weight: 700;
+.top-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bell-wrap {
+    position: relative; width: 34px; height: 34px; border-radius: 50%; background: #F8FAFC;
+    border: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: center; font-size: 15px;
 }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
-.page-title { font-size: 24px; font-weight: 800; letter-spacing: -.4px; margin: 0; line-height: 1.15; color: #0F172A; }
-.page-sub { font-size: 13px; color: #64748B; font-weight: 500; margin-top: 4px; max-width: 720px; }
+.bell-dot {
+    position: absolute; top: -4px; right: -4px; background: #E21A3C; color: #FFF;
+    font-size: 9.5px; font-weight: 800; padding: 1px 5px; border-radius: 10px;
+}
+.page-header { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.page-greet { display: flex; align-items: center; gap: 12px; }
+.greet-mark {
+    width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0;
+    background: linear-gradient(135deg, #FB7185 0%, #E21A3C 100%);
+    color: #FFF; font-weight: 800; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 14px rgba(226, 26, 60, 0.25);
+}
+.page-title { font-size: 22px; font-weight: 800; letter-spacing: -.4px; margin: 0; line-height: 1.15; color: #0F172A; }
+.page-sub { font-size: 12.5px; color: #64748B; font-weight: 500; margin-top: 3px; max-width: 720px; }
 .header-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .source-chip {
-    background: #F0F9FF; border: 1px solid #BAE6FD; color: #0369A1; border-radius: 20px;
-    padding: 6px 13px; font-size: 11.5px; font-weight: 700; max-width: 320px;
+    background: #FFF1F3; border: 1px solid #FECDD3; color: #BE123C; border-radius: 20px;
+    padding: 5px 13px; font-size: 11.5px; font-weight: 700; max-width: 320px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .profile-chip { display: flex; align-items: center; gap: 8px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 24px; padding: 4px 12px 4px 4px; }
 .avatar {
-    width: 30px; height: 30px; border-radius: 50%; color: #FFF; font-weight: 800; font-size: 11.5px;
-    background: linear-gradient(135deg, #FB923C 0%, #EA580C 100%);
-    display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(234,88,12,.28);
+    width: 32px; height: 32px; border-radius: 50%; color: #FFF; font-weight: 800; font-size: 11.5px;
+    background: linear-gradient(135deg, #E21A3C 0%, #B80C29 100%);
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(226,26,60,.25);
 }
 .p-name { font-size: 12px; font-weight: 800; color: #0F172A; line-height: 1.2; }
 .p-role { font-size: 10px; font-weight: 600; color: #64748B; }
 
-/* ---------- Nút Primary màu cam đặc trưng theo thiết kế mẫu ---------- */
+/* ---------- Nút Primary Đỏ Đô đặc trưng theo thiết kế mẫu ---------- */
 button[kind="primary"], [data-testid="baseButton-primary"] {
-    background: linear-gradient(135deg, #F97316 0%, #EA580C 100%) !important;
+    background: linear-gradient(135deg, #E21A3C 0%, #C8102E 100%) !important;
     border: none !important;
-    border-radius: 14px !important;
+    border-radius: 12px !important;
     color: #FFFFFF !important;
     font-weight: 700 !important;
-    box-shadow: 0 8px 20px rgba(234, 88, 12, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(226, 26, 60, 0.24) !important;
 }
 button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
-    filter: brightness(1.04);
+    filter: brightness(1.06);
     transform: translateY(-1px);
 }
 button[kind="secondary"], [data-testid="baseButton-secondary"] {
-    border-radius: 14px !important;
-    border: 1.5px solid #E2E8F0 !important;
-    background: rgba(255, 255, 255, 0.92) !important;
+    border-radius: 12px !important;
+    border: 1px solid #E2E8F0 !important;
+    background: #FFFFFF !important;
     font-weight: 600 !important;
 }
 
 /* ---------- Thanh tiến trình 5 giai đoạn ---------- */
-.phase-bar { display: flex; align-items: center; background: rgba(255,255,255,0.78); border: 1px solid #E2E8F0; border-radius: 16px; padding: 11px 18px; margin-bottom: 18px; gap: 6px; overflow-x: auto; }
+.phase-bar { display: flex; align-items: center; background: #FFFFFF; border: 1px solid #E8ECF4; border-radius: 14px; padding: 10px 16px; margin-bottom: 16px; gap: 6px; overflow-x: auto; }
 .phase { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #94A3B8; white-space: nowrap; }
-.phase-dot { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: #FFFFFF; border: 2px solid #CBD5E1; color: #94A3B8; }
+.phase-dot { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; background: #FFFFFF; border: 2px solid #CBD5E1; color: #94A3B8; }
 .phase.done { color: #047857; } .phase.done .phase-dot { background: #10B981; border-color: #10B981; color: #FFF; }
 .phase.warn { color: #B45309; } .phase.warn .phase-dot { background: #F59E0B; border-color: #F59E0B; color: #FFF; }
 .phase.fail { color: #B91C1C; } .phase.fail .phase-dot { background: #EF4444; border-color: #EF4444; color: #FFF; }
@@ -250,69 +244,67 @@ button[kind="secondary"], [data-testid="baseButton-secondary"] {
 
 /* ---------- Card container (st.container key="card_...") ---------- */
 [class*="st-key-card"] {
-    background: rgba(255, 255, 255, 0.88);
-    backdrop-filter: blur(14px);
-    border: 1px solid rgba(226, 232, 240, 0.9);
-    border-radius: 24px;
-    padding: 22px 24px;
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+    background: #FFFFFF;
+    border: 1px solid #E8ECF4;
+    border-radius: 18px;
+    padding: 20px 22px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
 }
-.card-title { font-size: 16.5px; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -.2px; }
-.card-sub { font-size: 12.5px; color: #64748B; margin: 3px 0 12px 0; }
+.card-title { font-size: 15.5px; font-weight: 800; color: #0F172A; margin: 0; letter-spacing: -.2px; }
+.card-sub { font-size: 12px; color: #64748B; margin: 3px 0 12px 0; }
 
-/* ---------- Hero Glass 2 cột theo ảnh mẫu ---------- */
+/* ---------- Hero & Upload dashed zone ---------- */
 .hero-glass {
-    background: rgba(255, 255, 255, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.96);
-    border-radius: 26px;
-    padding: 24px 28px;
-    margin-bottom: 18px;
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
+    background: #FFFFFF;
+    border: 1px solid #E8ECF4;
+    border-radius: 18px;
+    padding: 22px 24px;
+    margin-bottom: 16px;
 }
 .hero-tag {
-    display: inline-block; background: #FFF7ED; border: 1px solid #FED7AA; color: #C2410C;
+    display: inline-block; background: #FFF1F3; border: 1px solid #FECDD3; color: #BE123C;
     font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; margin-bottom: 10px;
 }
-.hero-h1 { font-size: 28px; font-weight: 800; color: #0F172A; line-height: 1.15; margin: 0 0 10px 0; letter-spacing: -.5px; }
-.hero-h1 span { color: #F97316; }
+.hero-h1 { font-size: 25px; font-weight: 800; color: #0F172A; line-height: 1.2; margin: 0 0 8px 0; letter-spacing: -.4px; }
+.hero-h1 span { color: #E21A3C; }
 .hero-desc { font-size: 13px; color: #475569; line-height: 1.6; margin: 0; }
 .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
-.mini-stat {
-    background: #FFFFFF; border-radius: 18px; padding: 14px 14px; border: 1.5px solid #E2E8F0;
-    box-shadow: 0 6px 16px rgba(15,23,42,.03);
-}
-.mini-stat.green { border-color: #BBF7D0; background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%); }
-.mini-stat.orange { border-color: #FED7AA; background: linear-gradient(180deg, #FFF7ED 0%, #FFFFFF 100%); }
-.mini-stat.amber { border-color: #FDE68A; background: linear-gradient(180deg, #FEFCE8 0%, #FFFFFF 100%); }
-.mini-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 10.5px; font-weight: 800; }
+.mini-stat { background: #FFFFFF; border-radius: 14px; padding: 13px; border: 1.5px solid #E2E8F0; }
+.mini-stat.green { border-color: #BBF7D0; background: #F0FDF4; }
+.mini-stat.orange { border-color: #FECDD3; background: #FFF1F3; }
+.mini-stat.amber { border-color: #BFDBFE; background: #EFF6FF; }
+.mini-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 10.5px; font-weight: 800; }
 .mini-pill { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 800; }
 .mini-stat.green .mini-pill { background: #DCFCE7; color: #15803D; }
-.mini-stat.orange .mini-pill { background: #FFEDD5; color: #C2410C; }
-.mini-stat.amber .mini-pill { background: #FEF3C7; color: #B45309; }
+.mini-stat.orange .mini-pill { background: #FFE4E8; color: #BE123C; }
+.mini-stat.amber .mini-pill { background: #DBEAFE; color: #1D4ED8; }
 .mini-lbl { font-size: 11px; font-weight: 700; color: #334155; }
-.mini-num { font-size: 24px; font-weight: 800; color: #0F172A; margin: 4px 0 2px 0; line-height: 1.1; }
-.mini-stat.orange .mini-num { color: #EA580C; }
+.mini-num { font-size: 22px; font-weight: 800; color: #0F172A; margin: 3px 0 2px 0; line-height: 1.1; }
+.mini-stat.orange .mini-num { color: #E21A3C; }
 .mini-foot { font-size: 10.5px; font-weight: 600; color: #64748B; }
 .hero-summary-bar {
-    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 16px; padding: 12px 16px;
+    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 11px 14px;
     display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
 }
-.hero-sum-val { font-size: 16px; font-weight: 800; color: #EA580C; }
-.hero-sum-right { font-size: 12px; font-weight: 800; color: #0D9488; text-align: right; }
+.hero-sum-val { font-size: 15px; font-weight: 800; color: #E21A3C; }
+.hero-sum-right { font-size: 11.5px; font-weight: 800; color: #2563EB; text-align: right; }
 
-/* ---------- KPI cards ---------- */
-.kpi-card { border-radius: 20px; padding: 18px 20px; min-height: 128px; border: 1.5px solid; transition: transform .2s ease, box-shadow .2s ease; }
-.kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(15,23,42,.06); }
-.kpi-card.pink { background: linear-gradient(135deg, #FFF1F2, #FFE4E6); border-color: #FECDD3; }
-.kpi-card.amber { background: linear-gradient(135deg, #FFFBEB, #FEF3C7); border-color: #FDE68A; }
-.kpi-card.green { background: linear-gradient(135deg, #ECFDF5, #D1FAE5); border-color: #A7F3D0; }
-.kpi-card.purple { background: linear-gradient(135deg, #FAF5FF, #EDE9FE); border-color: #DDD6FE; }
-.kpi-label { font-size: 12px; font-weight: 700; color: #475569; }
-.kpi-val { font-size: 23px; font-weight: 800; letter-spacing: -.4px; margin: 8px 0 4px 0; line-height: 1.15; }
-.kpi-card.pink .kpi-val { color: #BE123C; } .kpi-card.amber .kpi-val { color: #B45309; }
-.kpi-card.green .kpi-val { color: #047857; } .kpi-card.purple .kpi-val { color: #6D28D9; }
-.kpi-val.muted { font-size: 15px; color: #94A3B8 !important; }
-.kpi-hint { font-size: 11px; font-weight: 600; color: #64748B; }
+/* ---------- KPI cards (Hồng nhạt, Xanh dương nhạt, Xanh lá nhạt, Tím nhạt giống ảnh mẫu) ---------- */
+.kpi-card { border-radius: 16px; padding: 16px 18px; min-height: 108px; border: 1px solid; display: flex; align-items: center; gap: 14px; transition: transform .18s ease, box-shadow .18s ease; }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15,23,42,.05); }
+.kpi-card.pink { background: #FFF1F3; border-color: #FFE4E8; }
+.kpi-card.amber { background: #EFF6FF; border-color: #DBEAFE; }
+.kpi-card.green { background: #ECFDF5; border-color: #D1FAE5; }
+.kpi-card.purple { background: #F5F3FF; border-color: #EDE9FE; }
+.kpi-ico { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; flex-shrink: 0; color: #FFF; }
+.kpi-card.pink .kpi-ico { background: #E21A3C; }
+.kpi-card.amber .kpi-ico { background: #2563EB; }
+.kpi-card.green .kpi-ico { background: #10B981; }
+.kpi-card.purple .kpi-ico { background: #7C3AED; }
+.kpi-label { font-size: 11.5px; font-weight: 700; color: #475569; }
+.kpi-val { font-size: 21px; font-weight: 800; letter-spacing: -.4px; margin: 2px 0; line-height: 1.15; color: #0F172A; }
+.kpi-val.muted { font-size: 14px; color: #94A3B8 !important; }
+.kpi-hint { font-size: 11px; font-weight: 600; color: #059669; }
 
 /* ---------- Thanh tỷ trọng kênh ---------- */
 .ch-row { margin-bottom: 14px; }
@@ -414,19 +406,58 @@ def style_chart(fig, height: int = 320):
     return fig
 
 
+def sanitize_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    """Làm sạch DataFrame trước khi đưa vào st.dataframe để tránh hoàn toàn ArrowTypeError."""
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        if out[col].dtype == "object":
+            out[col] = out[col].apply(
+                lambda v: ", ".join(map(str, v)) if isinstance(v, (list, tuple, set))
+                else (str(v) if isinstance(v, dict) else ("" if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v)))
+            )
+    return out
+
+
 def show_df_preview(df: pd.DataFrame, max_rows: int = 500, **kwargs) -> None:
-    """Hiển thị tối đa max_rows dòng để tránh lag trình duyệt với tập dữ liệu lớn (15.000+ dòng)."""
+    """Hiển thị tối đa max_rows dòng (đã sanitize PyArrow) để tránh lag và lỗi hiển thị."""
+    if df is None:
+        return
     total = len(df)
+    view_df = sanitize_df_for_display(df.head(max_rows) if total > max_rows else df)
     if total > max_rows:
         st.caption(f"Đang hiển thị {max_rows:,} / {total:,} dòng đầu tiên để tối ưu hiệu năng trình duyệt.")
-        st.dataframe(df.head(max_rows), **kwargs)
-    else:
-        st.dataframe(df, **kwargs)
+    st.dataframe(view_df, **kwargs)
+
+
+VI_STATUS_MAP = {
+    "NOT_STARTED": "CHƯA XỬ LÝ",
+    "PROCESSING": "ĐANG XỬ LÝ",
+    "SUCCESS": "ĐẠT CHUẨN",
+    "WARNING": "CẢNH BÁO",
+    "NEEDS_APPROVAL": "CHỜ PHÊ DUYỆT",
+    "FAILED": "LỖI CHẶN",
+}
+
+
+def vi_status(code: str) -> str:
+    return VI_STATUS_MAP.get(str(code), str(code))
 
 
 # ==============================================================================
 # SESSION STATE & LOGIC ĐIỀU PHỐI (giữ nguyên backend)
 # ==============================================================================
+DEFAULT_CHAT_GREETING = {
+    "role": "assistant",
+    "content": (
+        "Xin chào! Tôi là **Trợ lý AI GrowthMetric**. Tôi có thể giúp bạn:\n"
+        "- Tư vấn **bước tiếp theo** bạn cần làm trong quy trình.\n"
+        "- Tóm tắt **doanh thu, lợi nhuận, kênh bán, sản phẩm & chiến dịch** theo dữ liệu thực tế.\n"
+        "- Giải thích **lỗi làm sạch & ngoại lệ cần phê duyệt**."
+    ),
+}
+
 DEFAULTS = {
     "nav_page": PAGES[0],
     "data_status": "NOT_CONNECTED",    # NOT_CONNECTED | CONNECTED | FAILED
@@ -452,10 +483,11 @@ DEFAULTS = {
     "cleaned_excel": None,
     "uploaded_file_id": None,
     "pending_toast": None,
+    "chat_history": [dict(DEFAULT_CHAT_GREETING)],
 }
 for _k, _v in DEFAULTS.items():
     if _k not in st.session_state:
-        st.session_state[_k] = _v
+        st.session_state[_k] = list(_v) if isinstance(_v, list) else _v
 
 if st.session_state.nav_page not in PAGES:
     st.session_state.nav_page = PAGES[0]
@@ -584,32 +616,222 @@ def phase_states() -> list:
     ]
 
 
-def render_header(title: str, subtitle: str) -> None:
+def _build_live_context_summary() -> str:
+    s = st.session_state
+    lines = [
+        f"- Nguồn dữ liệu: {s.source_name if s.data_status == 'CONNECTED' else 'Chưa kết nối'}",
+        f"- Trạng thái làm sạch: {vi_status(s.cleaning_status)}",
+        f"- Quy trình 6 bước: {s.process_status}",
+        f"- Kiểm toán Verification: {s.verification_status}",
+    ]
+    q = s.quality_summary or {}
+    if q:
+        lines.append(
+            f"- Chất lượng dữ liệu: {q.get('Data_Quality_Score', '—')}% "
+            f"({q.get('Normalized_Transactions_Count', 0)} giao dịch chuẩn hóa, "
+            f"{q.get('Auto_Fixed_Count', 0)} tự sửa, {q.get('Exceptions_Count', 0)} ngoại lệ)"
+        )
+    eng = s.engine
+    if eng is not None and eng.report_result is not None and s.process_status == "COMPLETED":
+        rep = eng.report_result
+        lines.append(
+            f"- Tổng doanh thu phân bổ: {fmt_vnd(rep['Attributed_Revenue'].sum())} | "
+            f"Net Sales: {fmt_vnd(rep['Net_Sales'].sum())}"
+        )
+    return "\n".join(lines)
+
+
+def generate_ai_reply(question: str) -> str:
+    """Trả lời câu hỏi người dùng dựa trên trạng thái và số liệu thực tế trong phiên."""
+    import os
+    s = st.session_state
+    q_text = (question or "").strip().lower()
+    q_sum = s.quality_summary or {}
+    pend = pending_exceptions()
+    eng = s.engine
+    rep = eng.report_result if (eng is not None and s.process_status == "COMPLETED") else None
+    active_df = eng.get_active_transactions_df() if eng is not None else (
+        (s.normalized_data or {}).get("Normalized_Transactions") if s.normalized_data else None
+    )
+
+    # 1. Hỏi bước tiếp theo / hướng dẫn
+    if any(k in q_text for k in ["tiếp theo", "làm gì", "hướng dẫn", "bắt đầu", "cần gì", "muốn gì", "quy trình"]):
+        if s.data_status != "CONNECTED":
+            return (
+                "**Bạn chưa nạp dữ liệu.** Hãy chọn một trong hai cách:\n"
+                "1. Bấm **⚡ Nạp Bộ 3 Tabs Chuẩn** (hoặc các bộ mẫu bên dưới) để trải nghiệm ngay.\n"
+                "2. Vào mục **Kết Nối Google Sheets** để dán link Google Sheets hoặc tải file `.csv` / `.xlsx` của bạn."
+            )
+        if not q_sum:
+            return (
+                f"Bạn đã nạp nguồn **{s.source_name}**. Bước tiếp theo:\n"
+                "- Bấm **Làm sạch & chạy phân tích ngay** ngay tại trang Tổng quan, hoặc vào **Data Cleaning & Audit** để kiểm tra chi tiết trước khi chạy."
+            )
+        if not s.can_proceed_process:
+            return (
+                f"Dữ liệu đang ở trạng thái **{vi_status(s.cleaning_status)}** và còn lỗi chặn.\n"
+                "- Hãy mở **Data Cleaning & Audit → Nhật ký lỗi** để xem nguyên nhân và kiểm tra lại cấu trúc bảng nguồn."
+            )
+        if s.process_status != "COMPLETED":
+            return "Dữ liệu đã làm sạch xong! Bạn hãy vào **Process Workflow (6 Bước)** và bấm **Chạy toàn bộ 6 bước** để phân bổ doanh thu và tính Net Contribution."
+        if pend:
+            return (
+                f"Quy trình 6 bước đã hoàn tất, nhưng còn **{len(pend)} ngoại lệ đang chờ duyệt**.\n"
+                "- Hãy sang trang **Phê Duyệt Exceptions** để Trưởng phòng Marketing / Quản trị viên chọn **Chấp thuận** hoặc **Từ chối**, sau đó chạy **Verification Suite**."
+            )
+        if s.verification_status != "PASS":
+            return "Tất cả ngoại lệ đã được xử lý! Hãy vào **Verification Suite** và bấm chạy 7 phép kiểm toán để mở khóa **Xuất báo cáo HTML Standalone**."
+        return "Toàn bộ quy trình đã **ĐẠT CHUẨN 100%**! Bạn có thể vào **Báo Cáo Reports & Export** để xem bảng chi tiết và tải file HTML hoặc Excel."
+
+    # 2. Hỏi về ngoại lệ / lỗi dữ liệu / làm sạch
+    if any(k in q_text for k in ["ngoại lệ", "lỗi", "làm sạch", "duyệt", "trùng", "chất lượng"]):
+        if not q_sum:
+            return "Hiện chưa chạy bước **Làm sạch & Kiểm toán**. Sau khi nạp dữ liệu, hãy bấm làm sạch để tôi phân tích các lỗi và ngoại lệ cho bạn."
+        detail_lines = [
+            f"- **Trạng thái làm sạch:** {vi_status(q_sum.get('Status', s.cleaning_status))} (Điểm chất lượng: **{q_sum.get('Data_Quality_Score', '—')}%**)",
+            f"- **Số dòng kiểm tra / chuẩn hóa:** {q_sum.get('Total_Raw_Records', 0)} / {q_sum.get('Normalized_Transactions_Count', 0)}",
+            f"- **Tự sửa an toàn:** {q_sum.get('Auto_Fixed_Count', 0)} ô | **Trùng lặp:** {q_sum.get('Duplicate_Rows_Count', 0)} | **Thiếu:** {q_sum.get('Missing_Fields_Count', 0)}",
+            f"- **Ngoại lệ chờ duyệt:** **{len(pend)}** / {len(s.exceptions_list)}",
+        ]
+        if pend:
+            top_p = "; ".join(f"`{e.get('Order_ID')}` ({e.get('Error_Type')})" for e in pend[:3])
+            detail_lines.append(f"- **Ví dụ ngoại lệ đang chờ:** {top_p}. Vào trang **Phê Duyệt Exceptions** để xử lý.")
+        return "\n".join(detail_lines)
+
+    # 3. Hỏi về doanh thu / lợi nhuận / kênh / sản phẩm / chiến dịch / tốt nhất
+    if any(k in q_text for k in ["doanh thu", "lợi nhuận", "kpi", "kênh", "sản phẩm", "chiến dịch", "tốt nhất", "cao nhất", "tóm tắt"]):
+        if rep is None or rep.empty:
+            return "Chưa có kết quả phân tích 6 bước. Hãy nạp dữ liệu và bấm **Làm sạch & chạy phân tích ngay** (hoặc chạy ở **Process Workflow**) để tôi tổng hợp số liệu chính xác cho bạn."
+        total_rev = rep["Attributed_Revenue"].sum()
+        total_net = rep["Net_Sales"].sum()
+        ans = [
+            f"**Tóm tắt số liệu thực tế ({s.source_name}):**",
+            f"- **Tổng Doanh thu phân bổ:** {fmt_vnd(total_rev)}",
+            f"- **Net Sales (sau đối soát hoàn trả):** {fmt_vnd(total_net)}",
+        ]
+        if "Total_Cost" in rep.columns and rep["Total_Cost"].notna().any():
+            ans.append(f"- **Chi phí ABC:** {fmt_vnd(rep['Total_Cost'].sum())}")
+        if "Net_Contribution" in rep.columns and rep["Net_Contribution"].notna().any():
+            ans.append(f"- **Net Contribution:** {fmt_vnd(rep['Net_Contribution'].sum())}")
+        elif active_df is not None and "Source_Profit" in active_df.columns:
+            prof = pd.to_numeric(active_df["Source_Profit"], errors="coerce").dropna().sum()
+            ans.append(f"- **Lợi nhuận gộp nguồn:** {fmt_vnd(prof)}")
+
+        if active_df is not None and not active_df.empty and "Channel" in active_df.columns and "Order_Value" in active_df.columns:
+            ch_df = active_df[["Channel", "Order_Value"]].copy()
+            ch_df["Order_Value"] = pd.to_numeric(ch_df["Order_Value"], errors="coerce").fillna(0)
+            by_ch = ch_df.groupby("Channel")["Order_Value"].sum()
+            by_ch = by_ch[by_ch > 0].sort_values(ascending=False)
+            if not by_ch.empty:
+                top_ch = by_ch.index[0]
+                pct = by_ch.iloc[0] / by_ch.sum() * 100
+                ans.append(f"- **Kênh dẫn đầu:** `{top_ch}` ({fmt_vnd(by_ch.iloc[0])} — {pct:.1f}%)")
+
+        if active_df is not None and not active_df.empty and "Product_Name" in active_df.columns and active_df["Product_Name"].notna().any():
+            pr_df = active_df[["Product_Name", "Order_Value"]].dropna(subset=["Product_Name"]).copy()
+            pr_df["Order_Value"] = pd.to_numeric(pr_df["Order_Value"], errors="coerce").fillna(0)
+            by_pr = pr_df.groupby("Product_Name")["Order_Value"].sum().sort_values(ascending=False)
+            if not by_pr.empty:
+                ans.append(f"- **Sản phẩm doanh thu cao nhất:** `{by_pr.index[0]}` ({fmt_vnd(by_pr.iloc[0])})")
+        elif not rep.empty:
+            top_c = rep.sort_values("Net_Sales", ascending=False).iloc[0]
+            ans.append(f"- **Nhóm chiến dịch dẫn đầu:** `{top_c['Campaign_Name']}` ({fmt_vnd(top_c['Net_Sales'])})")
+        return "\n".join(ans)
+
+    # 4. Câu hỏi tự do: thử Gemini nếu có GEMINI_API_KEY, ngược lại trả tóm tắt ngữ cảnh thông minh
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    ctx = _build_live_context_summary()
+    if api_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            prompt = (
+                "Bạn là Trợ lý AI của hệ thống GrowthMetric Marketing Analytics. "
+                "Trả lời ngắn gọn, dễ hiểu bằng tiếng Việt dựa ĐÚNG trên trạng thái thực tế sau (không bịa số liệu):\n"
+                f"{ctx}\n\nCâu hỏi người dùng: {question}"
+            )
+            resp = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+            if resp and getattr(resp, "text", None):
+                return resp.text.strip()
+        except Exception:
+            pass
+
+    return (
+        f"**Trạng thái phiên làm việc hiện tại:**\n{ctx}\n\n"
+        "Bạn có thể hỏi tôi cụ thể về:\n"
+        "- *“Tôi cần làm gì tiếp theo?”*\n"
+        "- *“Tóm tắt doanh thu & lợi nhuận”*\n"
+        "- *“Giải thích ngoại lệ cần duyệt”*"
+    )
+
+
+def render_header(title: str, subtitle: str, show_chatbot: bool = False) -> None:
     source = st.session_state.source_name if st.session_state.data_status == "CONNECTED" else "Chưa kết nối nguồn dữ liệu"
-    agent_txt = "AI Agent Sẵn sàng" if st.session_state.data_status == "CONNECTED" else "Chờ nạp dữ liệu"
-    html(f"""
-    <div class="top-glass-bar">
-        <div class="top-ws">
-            <div class="top-ws-badge">GM</div>
-            <span>GrowthMetric Workspace</span>
-            <span class="badge idle">{source}</span>
-        </div>
-        <div class="top-search">Tìm kiếm chiến dịch, dữ liệu, mã đơn, báo cáo...</div>
+    n_pend = len(pending_exceptions())
+    bell_badge = f'<span class="bell-dot">{n_pend}</span>' if n_pend else ""
+    bar_html = f"""
+    <div class="top-glass-bar" style="margin-bottom:0;">
+        <div class="top-search">🔍 Tìm kiếm dữ liệu, dự án, chiến dịch, mã đơn...</div>
         <div class="top-right">
-            <span class="agent-pill">● {agent_txt}</span>
+            <span class="source-chip" title="{source}">Nguồn: {source}</span>
+            <div class="bell-wrap" title="Ngoại lệ chờ duyệt">🔔{bell_badge}</div>
             <div class="profile-chip">
                 <div class="avatar">{ADMIN_INITIALS}</div>
                 <div><div class="p-name">{ADMIN_NAME}</div><div class="p-role">Admin account</div></div>
             </div>
         </div>
     </div>
+    """
+    if show_chatbot:
+        c_bar, c_bot = st.columns([4.4, 1.15], vertical_alignment="center")
+        with c_bar:
+            html(bar_html)
+        with c_bot:
+            with st.popover("🤖 Trợ lý AI", width="stretch"):
+                st.markdown("**Trợ lý AI GrowthMetric**")
+                st.caption(f"Nguồn: {source} • {vi_status(st.session_state.cleaning_status)}")
+                q1, q2 = st.columns(2)
+                q3, q4 = st.columns(2)
+                quick_prompts = [
+                    (q1, "Bước tiếp theo?", "Tôi cần làm gì tiếp theo?", "ai_q1"),
+                    (q2, "Tóm tắt KPI", "Tóm tắt doanh thu & lợi nhuận", "ai_q2"),
+                    (q3, "Xem ngoại lệ", "Giải thích ngoại lệ cần duyệt", "ai_q3"),
+                    (q4, "Kênh / SP tốt", "Kênh / chiến dịch nào tốt nhất?", "ai_q4"),
+                ]
+                for col_w, btn_lbl, full_q, k_btn in quick_prompts:
+                    if col_w.button(btn_lbl, key=k_btn, width="stretch"):
+                        st.session_state.chat_history.append({"role": "user", "content": full_q})
+                        st.session_state.chat_history.append({"role": "assistant", "content": generate_ai_reply(full_q)})
+                        st.rerun()
+
+                with st.container(height=260):
+                    for msg in st.session_state.chat_history:
+                        with st.chat_message(msg["role"]):
+                            st.markdown(msg["content"])
+
+                with st.form("ai_chat_form", clear_on_submit=True, border=False):
+                    user_q = st.text_input("Hỏi Trợ lý AI...", placeholder="VD: Tôi cần làm gì tiếp theo?", label_visibility="collapsed")
+                    send_clicked = st.form_submit_button("Gửi câu hỏi", type="primary", width="stretch")
+                if send_clicked and user_q.strip():
+                    st.session_state.chat_history.append({"role": "user", "content": user_q.strip()})
+                    st.session_state.chat_history.append({"role": "assistant", "content": generate_ai_reply(user_q.strip())})
+                    st.rerun()
+                if st.button("Làm mới hội thoại", key="ai_clear", width="stretch"):
+                    st.session_state.chat_history = [dict(DEFAULT_CHAT_GREETING)]
+                    st.rerun()
+        st.write("")
+    else:
+        html(bar_html)
+        st.write("")
+
+    html(f"""
     <div class="page-header">
-        <div>
-            <h1 class="page-title">{title}</h1>
-            <div class="page-sub">{subtitle}</div>
-        </div>
-        <div class="header-meta">
-            <div class="source-chip" title="{source}">Nguồn: {source}</div>
+        <div class="page-greet">
+            <div class="greet-mark">GM</div>
+            <div>
+                <h1 class="page-title">{title}</h1>
+                <div class="page-sub">{subtitle}</div>
+            </div>
         </div>
     </div>
     """)
@@ -638,28 +860,28 @@ def empty_state(message: str, button_label: str, page: str, key: str) -> None:
 # ==============================================================================
 with st.sidebar:
     html("""
-    <div class="brand">
-        <div class="brand-logo">GM</div>
-        <div><div class="brand-title">cloudcash</div><div class="brand-sub">Marketing Analytics OS</div></div>
+    <div class="brand-red-banner">
+        <div class="brand-red-title">GrowthMetric</div>
+        <div class="brand-red-sub">solutions • Marketing AI</div>
     </div>
-    <div class="nav-caption">QUY TRÌNH CHÍNH</div>
+    <div class="nav-caption">ĐIỀU HƯỚNG HỆ THỐNG</div>
     """)
     st.radio("Điều hướng", PAGES, key="nav_page", label_visibility="collapsed")
 
     s = st.session_state
     ds = badge("ok", "ĐÃ KẾT NỐI") if s.data_status == "CONNECTED" else (badge("fail", "LỖI") if s.data_status == "FAILED" else badge("idle", "CHƯA KẾT NỐI"))
     if s.cleaning_status == "SUCCESS":
-        cl = badge("ok", "SUCCESS")
+        cl = badge("ok", vi_status("SUCCESS"))
     elif s.cleaning_status == "WARNING":
-        cl = badge("warn", "WARNING")
+        cl = badge("warn", vi_status("WARNING"))
     elif s.cleaning_status == "NEEDS_APPROVAL":
-        cl = badge("warn", "NEEDS_APPROVAL")
+        cl = badge("warn", vi_status("NEEDS_APPROVAL"))
     elif s.cleaning_status == "PROCESSING":
-        cl = badge("idle", "PROCESSING")
+        cl = badge("idle", vi_status("PROCESSING"))
     elif s.cleaning_status == "FAILED":
-        cl = badge("fail", "FAILED")
+        cl = badge("fail", vi_status("FAILED"))
     else:
-        cl = badge("idle", "NOT_STARTED")
+        cl = badge("idle", vi_status("NOT_STARTED"))
     pr = badge("ok", "HOÀN TẤT") if s.process_status == "COMPLETED" else (badge("fail", "THẤT BẠI") if s.process_status == "FAILED" else badge("idle", "CHƯA CHẠY"))
     n_pending = len(pending_exceptions())
     if s.process_status == "COMPLETED":
@@ -676,12 +898,9 @@ with st.sidebar:
         <div class="side-row"><span>Phê duyệt</span>{ap}</div>
         <div class="side-row"><span>Verification</span>{vr}</div>
     </div>
-    <div class="side-admin">
-        <div class="side-admin-avatar">{ADMIN_INITIALS}</div>
-        <div>
-            <div class="side-admin-name">{ADMIN_NAME}</div>
-            <div class="side-admin-sub">Admin account • {s.cleaning_status}</div>
-        </div>
+    <div class="side-promo-red">
+        <div class="side-promo-title">Kiến tạo<br>giá trị số</div>
+        <div class="side-promo-sub">cùng GrowthMetric AI • {ADMIN_NAME}</div>
     </div>
     """)
 
@@ -698,7 +917,7 @@ page = st.session_state.nav_page
 # TRANG 1: TỔNG QUAN
 # ==============================================================================
 if page == PAGES[0]:
-    render_header("Tổng quan hiệu quả Marketing", "Theo dõi doanh thu phân bổ, Net Sales, chi phí và đóng góp lợi nhuận của từng chiến dịch.")
+    render_header("Chào mừng bạn trở lại!", "Quản lý và khai thác dữ liệu Marketing thông minh cùng GrowthMetric AI.", show_chatbot=True)
 
     if st.session_state.data_status != "CONNECTED":
         with st.container(key="card_hero_glass"):
@@ -826,29 +1045,54 @@ if page == PAGES[0]:
 
         k1, k2, k3, k4 = st.columns(4)
         with k1:
-            html(f'<div class="kpi-card pink"><div class="kpi-label">Doanh thu phân bổ</div><div class="kpi-val">{fmt_vnd(total_rev)}</div><div class="kpi-hint">Multi-touch attribution • {n_campaigns} nhóm chiến dịch</div></div>')
+            html(f'<div class="kpi-card pink"><div class="kpi-ico">₫</div><div><div class="kpi-label">Doanh thu phân bổ</div><div class="kpi-val">{fmt_vnd(total_rev)}</div><div class="kpi-hint">↑ {n_campaigns} nhóm chiến dịch</div></div></div>')
         with k2:
-            html(f'<div class="kpi-card amber"><div class="kpi-label">Net Sales</div><div class="kpi-val">{fmt_vnd(total_net)}</div><div class="kpi-hint">Sau đối soát hoàn trả {st.session_state.return_window} ngày</div></div>')
+            html(f'<div class="kpi-card amber"><div class="kpi-ico">📊</div><div><div class="kpi-label">Net Sales</div><div class="kpi-val">{fmt_vnd(total_net)}</div><div class="kpi-hint">↑ Đối soát {st.session_state.return_window} ngày</div></div></div>')
         with k3:
-            html(f'<div class="kpi-card purple"><div class="kpi-label">Chi phí ABC</div>{cost_html}<div class="kpi-hint">Trực tiếp + gián tiếp</div></div>')
+            html(f'<div class="kpi-card green"><div class="kpi-ico">✓</div><div><div class="kpi-label">Chất lượng dữ liệu</div><div class="kpi-val">{q.get("Data_Quality_Score", "—")}%</div><div class="kpi-hint">{vi_status(q.get("Status", st.session_state.cleaning_status))}</div></div></div>')
         with k4:
-            html(f'<div class="kpi-card green"><div class="kpi-label">Net Contribution</div>{nc_html}<div class="kpi-hint">Chất lượng dữ liệu: {q.get("Data_Quality_Score", "—")}%</div></div>')
+            nc_display = fmt_vnd(total_nc) if total_nc is not None else (fmt_vnd(total_cost) if total_cost is not None else f"{len(pending_exceptions())} chờ duyệt")
+            nc_label = "Net Contribution" if total_nc is not None else ("Chi phí ABC" if total_cost is not None else "Ngoại lệ chờ duyệt")
+            html(f'<div class="kpi-card purple"><div class="kpi-ico">⚡</div><div><div class="kpi-label">{nc_label}</div><div class="kpi-val">{nc_display}</div><div class="kpi-hint">Chi phí ABC: {fmt_vnd(total_cost) if total_cost is not None else "Chưa có"}</div></div></div>')
 
         st.write("")
-        norm_tx = (st.session_state.normalized_data or {}).get("Normalized_Transactions")
+        norm_tx = st.session_state.engine.get_active_transactions_df()
+        missing_cmp = (
+            norm_tx is not None and "Campaign_Data_Status" in norm_tx.columns
+            and (norm_tx["Campaign_Data_Status"] == "MISSING_SOURCE_DATA").all()
+        )
+        has_product = (
+            norm_tx is not None and "Product_Name" in norm_tx.columns
+            and norm_tx["Product_Name"].dropna().astype(str).str.strip().ne("").any()
+        )
 
-        # Hàng biểu đồ 1: Doanh thu theo chiến dịch & Tỷ trọng theo kênh
+        # Hàng biểu đồ 1: Doanh thu theo Sản phẩm (nếu thiếu mã chiến dịch) hoặc Chiến dịch & Tỷ trọng theo kênh
         col_a, col_b = st.columns([3, 2])
         with col_a:
             with st.container(key="card_campaign_chart"):
-                card_header("Doanh thu theo chiến dịch", "So sánh doanh thu phân bổ và Net Sales sau hoàn trả")
-                chart_df = rep[["Campaign_Name", "Attributed_Revenue", "Net_Sales"]].melt(
-                    id_vars="Campaign_Name", var_name="Chỉ số", value_name="VNĐ"
-                ).replace({"Attributed_Revenue": "Doanh thu phân bổ", "Net_Sales": "Net Sales"})
-                fig = px.bar(chart_df, x="Campaign_Name", y="VNĐ", color="Chỉ số", barmode="group",
-                             color_discrete_sequence=["#6366F1", "#EC4899"])
-                fig.update_traces(marker_line_width=0, hovertemplate="%{x}<br>%{y:,.0f} đ<extra></extra>")
-                st.plotly_chart(style_chart(fig), width="stretch", config={"displayModeBar": False})
+                if missing_cmp and has_product:
+                    card_header("Doanh thu & Lợi nhuận gộp theo Sản phẩm", "Tổng hợp từ các bản ghi hợp lệ sau xử lý")
+                    p_df = norm_tx[["Product_Name", "Order_Value", "Source_Profit"]].dropna(subset=["Product_Name"]).copy()
+                    p_df["Order_Value"] = pd.to_numeric(p_df["Order_Value"], errors="coerce").fillna(0)
+                    p_df["Source_Profit"] = pd.to_numeric(p_df["Source_Profit"], errors="coerce").fillna(0)
+                    by_prod = p_df.groupby("Product_Name", as_index=False)[["Order_Value", "Source_Profit"]].sum()
+                    melt_prod = by_prod.melt(id_vars="Product_Name", var_name="Chỉ tiêu", value_name="VNĐ").replace({
+                        "Order_Value": "Doanh thu thuần",
+                        "Source_Profit": "Lợi nhuận gộp",
+                    })
+                    fig = px.bar(melt_prod, x="Product_Name", y="VNĐ", color="Chỉ tiêu", barmode="group",
+                                 color_discrete_sequence=["#E21A3C", "#2563EB"])
+                    fig.update_traces(marker_line_width=0, hovertemplate="%{x}<br>%{y:,.0f} đ<extra></extra>")
+                    st.plotly_chart(style_chart(fig), width="stretch", config={"displayModeBar": False})
+                else:
+                    card_header("Doanh thu theo chiến dịch", "So sánh doanh thu phân bổ và Net Sales sau hoàn trả")
+                    chart_df = rep[["Campaign_Name", "Attributed_Revenue", "Net_Sales"]].melt(
+                        id_vars="Campaign_Name", var_name="Chỉ số", value_name="VNĐ"
+                    ).replace({"Attributed_Revenue": "Doanh thu phân bổ", "Net_Sales": "Net Sales"})
+                    fig = px.bar(chart_df, x="Campaign_Name", y="VNĐ", color="Chỉ số", barmode="group",
+                                 color_discrete_sequence=["#E21A3C", "#FB7185"])
+                    fig.update_traces(marker_line_width=0, hovertemplate="%{x}<br>%{y:,.0f} đ<extra></extra>")
+                    st.plotly_chart(style_chart(fig), width="stretch", config={"displayModeBar": False})
 
         with col_b:
             with st.container(key="card_channel"):
@@ -857,7 +1101,8 @@ if page == PAGES[0]:
                     tmp = norm_tx[["Channel", "Order_Value"]].copy()
                     tmp["Channel"] = tmp["Channel"].fillna("Chưa xác định").astype(str).replace({"": "Chưa xác định", "None": "Chưa xác định"})
                     tmp["Order_Value"] = pd.to_numeric(tmp["Order_Value"], errors="coerce").fillna(0)
-                    by_ch = tmp.groupby("Channel")["Order_Value"].sum().sort_values(ascending=False)
+                    by_ch = tmp.groupby("Channel")["Order_Value"].sum()
+                    by_ch = by_ch[by_ch > 0].sort_values(ascending=False)
                     total = by_ch.sum()
                     if total > 0:
                         rows = []
@@ -916,16 +1161,29 @@ if page == PAGES[0]:
                     norm_tx is not None and "Order_Date" in norm_tx.columns
                     and norm_tx["Order_Date"].dropna().astype(str).str.strip().ne("").any()
                 )
+                distinct_pay = 0
+                if norm_tx is not None and "Payment_Method" in norm_tx.columns:
+                    distinct_pay = norm_tx["Payment_Method"].dropna().astype(str).str.strip().nunique()
                 if has_dates:
-                    card_header("Xu hướng Doanh thu theo Ngày", "Diễn biến giá trị đơn hàng đã chuẩn hóa theo thời gian")
-                    t_df = norm_tx[["Order_Date", "Order_Value"]].dropna(subset=["Order_Date"]).copy()
+                    card_header("Xu hướng Doanh thu & Lợi nhuận theo Tháng/Ngày", "Diễn biến doanh thu và lợi nhuận gộp từ các đơn hợp lệ")
+                    t_df = norm_tx[["Order_Date", "Order_Value", "Source_Profit"]].dropna(subset=["Order_Date"]).copy()
+                    t_df["Order_Date"] = t_df["Order_Date"].astype(str)
+                    t_df = t_df[t_df["Order_Date"].str.strip().ne("") & t_df["Order_Date"].ne("None") & t_df["Order_Date"].ne("nan")]
                     t_df["Order_Value"] = pd.to_numeric(t_df["Order_Value"], errors="coerce").fillna(0)
-                    daily = t_df.groupby("Order_Date", as_index=False)["Order_Value"].sum().sort_values("Order_Date")
-                    fig_tr = px.area(daily, x="Order_Date", y="Order_Value", markers=True,
-                                     color_discrete_sequence=["#8B5CF6"])
-                    fig_tr.update_traces(hovertemplate="%{x}<br>%{y:,.0f} đ<extra></extra>")
-                    st.plotly_chart(style_chart(fig_tr, height=290), width="stretch", config={"displayModeBar": False})
-                elif norm_tx is not None and "Payment_Method" in norm_tx.columns:
+                    t_df["Source_Profit"] = pd.to_numeric(t_df["Source_Profit"], errors="coerce").fillna(0)
+                    if not t_df.empty:
+                        daily = t_df.groupby("Order_Date", as_index=False)[["Order_Value", "Source_Profit"]].sum().sort_values("Order_Date")
+                        melt_daily = daily.melt(id_vars="Order_Date", var_name="Chỉ tiêu", value_name="VNĐ").replace({
+                            "Order_Value": "Doanh thu thuần",
+                            "Source_Profit": "Lợi nhuận gộp",
+                        })
+                        fig_tr = px.line(melt_daily, x="Order_Date", y="VNĐ", color="Chỉ tiêu", markers=True,
+                                         color_discrete_sequence=["#8B5CF6", "#10B981"])
+                        fig_tr.update_traces(hovertemplate="%{x}<br>%{y:,.0f} đ<extra></extra>")
+                        st.plotly_chart(style_chart(fig_tr, height=290), width="stretch", config={"displayModeBar": False})
+                    else:
+                        st.caption("Không có ngày hợp lệ để vẽ biểu đồ xu hướng.")
+                elif norm_tx is not None and "Payment_Method" in norm_tx.columns and distinct_pay >= 2:
                     card_header("Doanh thu theo Phương thức Thanh toán", "Phân bổ giá trị đơn hàng theo hình thức thanh toán")
                     p_df = norm_tx[["Payment_Method", "Order_Value"]].copy()
                     p_df["Payment_Method"] = p_df["Payment_Method"].fillna("Khác").astype(str)
@@ -942,13 +1200,31 @@ if page == PAGES[0]:
                     fig_pie.update_traces(textinfo="percent+label")
                     st.plotly_chart(style_chart(fig_pie, height=290), width="stretch", config={"displayModeBar": False})
 
-        # Hàng biểu đồ 3: Quyết định Marketing / Hoàn trả & Kiểm toán Verification / Cleaning
+        # Hàng biểu đồ 3: Khu vực / Hoàn trả / Quyết định & Kiểm toán Verification / Cleaning
         st.write("")
         col_e, col_f = st.columns(2)
         with col_e:
             with st.container(key="card_ov_decisions_returns"):
+                has_region = (
+                    norm_tx is not None and "Region" in norm_tx.columns
+                    and norm_tx["Region"].dropna().astype(str).str.strip().ne("").any()
+                )
                 has_returns = "Return_Amount" in rep.columns and rep["Return_Amount"].sum() > 0
-                if has_returns:
+                if has_region:
+                    card_header("Doanh thu & Lợi nhuận theo Khu vực", "So sánh đóng góp theo vùng miền từ các đơn hợp lệ")
+                    reg_df = norm_tx[["Region", "Order_Value", "Source_Profit"]].dropna(subset=["Region"]).copy()
+                    reg_df["Order_Value"] = pd.to_numeric(reg_df["Order_Value"], errors="coerce").fillna(0)
+                    reg_df["Source_Profit"] = pd.to_numeric(reg_df["Source_Profit"], errors="coerce").fillna(0)
+                    by_reg = reg_df.groupby("Region", as_index=False)[["Order_Value", "Source_Profit"]].sum()
+                    melt_reg = by_reg.melt(id_vars="Region", var_name="Chỉ tiêu", value_name="VNĐ").replace({
+                        "Order_Value": "Doanh thu thuần",
+                        "Source_Profit": "Lợi nhuận gộp",
+                    })
+                    fig_reg = px.bar(melt_reg, x="Region", y="VNĐ", color="Chỉ tiêu", barmode="group",
+                                     color_discrete_sequence=["#3B82F6", "#10B981"])
+                    fig_reg.update_traces(marker_line_width=0, hovertemplate="%{x}<br>%{y:,.0f} đ<extra></extra>")
+                    st.plotly_chart(style_chart(fig_reg, height=270), width="stretch", config={"displayModeBar": False})
+                elif has_returns:
                     card_header("Tác động Hoàn trả theo Chiến dịch", "Doanh thu phân bổ, giá trị hoàn trả và Net Sales thực nhận")
                     ret_df = rep[["Campaign_Name", "Attributed_Revenue", "Return_Amount", "Net_Sales"]].melt(
                         id_vars="Campaign_Name", var_name="Thành phần", value_name="VNĐ"
@@ -1043,14 +1319,18 @@ elif page == PAGES[1]:
                 if not url.strip():
                     st.error("Vui lòng nhập đường dẫn Google Sheets.")
                 else:
-                    with st.spinner("Đang kết nối và quét các tab..."):
-                        ok, tabs_dict, class_info, msg = load_google_sheet_flexible(url.strip())
-                    if ok:
-                        load_dataset(tabs_dict, f"Google Sheets ({len(tabs_dict)} tab)", class_info)
-                        st.rerun()
-                    else:
+                    try:
+                        with st.spinner("Đang kết nối và quét các tab..."):
+                            ok, tabs_dict, class_info, msg = load_google_sheet_flexible(url.strip())
+                        if ok:
+                            load_dataset(tabs_dict, f"Google Sheets ({len(tabs_dict)} tab)", class_info)
+                            st.rerun()
+                        else:
+                            st.session_state.data_status = "FAILED"
+                            st.error(msg)
+                    except Exception as exc:
                         st.session_state.data_status = "FAILED"
-                        st.error(msg)
+                        st.error(f"Không thể kết nối Google Sheets: {exc}")
 
     with tab_file:
         with st.container(key="card_upload"):
@@ -1060,19 +1340,25 @@ elif page == PAGES[1]:
                 file_id = f"{uploaded.name}-{uploaded.size}"
                 # Chỉ nạp một lần cho mỗi file, tránh reset trạng thái ở mỗi lần rerun
                 if st.session_state.uploaded_file_id != file_id:
-                    if uploaded.name.lower().endswith(".csv"):
-                        df_csv = pd.read_csv(uploaded)
-                        load_dataset({"Untitled": df_csv}, f"File CSV: {uploaded.name}")
-                        st.session_state.uploaded_file_id = file_id
-                        st.rerun()
-                    else:
-                        ok, tabs_dict, class_info, msg = load_from_excel_flexible(uploaded)
-                        if ok:
-                            load_dataset(tabs_dict, f"File Excel: {uploaded.name}", class_info)
-                            st.session_state.uploaded_file_id = file_id
-                            st.rerun()
+                    try:
+                        if uploaded.name.lower().endswith(".csv"):
+                            df_csv = read_csv_smart(uploaded)
+                            if df_csv is None or df_csv.empty:
+                                st.error("File CSV không có dữ liệu hợp lệ.")
+                            else:
+                                load_dataset({"Untitled": df_csv}, f"File CSV: {uploaded.name}")
+                                st.session_state.uploaded_file_id = file_id
+                                st.rerun()
                         else:
-                            st.error(msg)
+                            ok, tabs_dict, class_info, msg = load_from_excel_flexible(uploaded)
+                            if ok:
+                                load_dataset(tabs_dict, f"File Excel: {uploaded.name}", class_info)
+                                st.session_state.uploaded_file_id = file_id
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                    except Exception as exc:
+                        st.error(f"Lỗi khi đọc file '{uploaded.name}': {exc}")
                 else:
                     st.success(f"Đang sử dụng file: {uploaded.name}")
 
@@ -1107,7 +1393,7 @@ elif page == PAGES[1]:
 # TRANG 3: DATA CLEANING
 # ==============================================================================
 elif page == PAGES[2]:
-    render_header("Data Cleaning & Audit", "Chuẩn hóa tiền tệ, tách mã chiến dịch, phát hiện ngoại lệ và đối chiếu 5 bất biến tài chính trước/sau.")
+    render_header("Làm sạch & Kiểm toán Dữ liệu", "Chuẩn hóa tiền tệ, tách mã chiến dịch, phát hiện ngoại lệ và đối chiếu 5 bất biến tài chính trước/sau.")
 
     if not st.session_state.raw_tabs:
         empty_state("Chưa có dữ liệu để làm sạch.", "Đi tới Kết nối dữ liệu →", PAGES[1], "clean")
@@ -1120,18 +1406,18 @@ elif page == PAGES[2]:
                 queue_toast("Phát sinh lỗi trong quá trình làm sạch — xem chi tiết bên dưới", "⚠️")
             else:
                 q = st.session_state.quality_summary
-                queue_toast(f"Làm sạch xong ({q['Status']}) — chất lượng {q['Data_Quality_Score']}%, {len(st.session_state.exceptions_list)} ngoại lệ")
+                queue_toast(f"Làm sạch xong ({vi_status(q['Status'])}) — chất lượng {q['Data_Quality_Score']}%, {len(st.session_state.exceptions_list)} ngoại lệ")
             st.rerun()
 
         if st.session_state.cleaning_error_detail:
-            st.error("Đã phát sinh lỗi khi làm sạch dữ liệu (hệ thống đã giữ nguyên Raw Data). Chi tiết kỹ thuật:")
+            st.error("Đã phát sinh lỗi khi làm sạch dữ liệu (hệ thống đã giữ nguyên Dữ liệu gốc). Chi tiết kỹ thuật:")
             st.code(st.session_state.cleaning_error_detail)
 
         q = st.session_state.quality_summary
         if q:
             st.write("")
             m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Tab đã xử lý", f"{q.get('Tabs_Processed_Count', 1)}/{q.get('Total_Tabs_Count', 1)}")
+            m1.metric("Bảng đã xử lý", f"{q.get('Tabs_Processed_Count', 1)}/{q.get('Total_Tabs_Count', 1)}")
             m2.metric("Dòng kiểm tra", f"{q['Total_Raw_Records']}")
             m3.metric("Dòng chuẩn hóa", f"{q.get('Normalized_Rows_Count', q['Normalized_Transactions_Count'])}")
             m4.metric("Tự sửa an toàn", f"{q['Auto_Fixed_Count']}")
@@ -1142,22 +1428,31 @@ elif page == PAGES[2]:
             n2.metric("Trùng lặp", f"{q.get('Duplicate_Rows_Count', 0)}")
             n3.metric("Trường bị thiếu", f"{q.get('Missing_Fields_Count', 0)}")
             n4.metric("Ngoại lệ cần duyệt", f"{q['Exceptions_Count']}")
-            n5.metric("Trạng thái", f"{q.get('Status', st.session_state.cleaning_status)}")
+            n5.metric("Trạng thái", vi_status(q.get("Status", st.session_state.cleaning_status)))
 
             if st.session_state.cleaning_status == "FAILED" or not st.session_state.can_proceed_process:
-                st.error("Dữ liệu còn lỗi chặn nên chưa thể chạy quy trình 6 bước. Xem nhật ký lỗi và trạng thái từng tab bên dưới để biết chi tiết.")
+                st.error("Dữ liệu còn lỗi chặn nên chưa thể chạy quy trình 6 bước. Xem nhật ký lỗi và trạng thái từng bảng bên dưới để biết chi tiết.")
             elif st.session_state.cleaning_status == "NEEDS_APPROVAL":
                 st.warning(f"Đã chuẩn hóa dữ liệu ({q['Data_Quality_Score']}%) nhưng còn {q['Exceptions_Count']} ngoại lệ cần xem xét/phê duyệt.")
 
             st.write("")
             t_tabs, t_rec, t_cmp, t_log, t_audit = st.tabs([
-                "Trạng thái các Tab", "Đối chiếu bất biến", "Trước & sau", "Nhật ký lỗi", "Audit Log"
+                "Trạng thái các bảng", "Đối chiếu bất biến", "Trước & sau", "Nhật ký lỗi", "Nhật ký thay đổi"
             ])
             with t_tabs:
                 if st.session_state.tab_statuses:
-                    st.dataframe(pd.DataFrame(st.session_state.tab_statuses), width="stretch", hide_index=True)
+                    df_ts = pd.DataFrame(st.session_state.tab_statuses).copy()
+                    if "Status" in df_ts.columns:
+                        df_ts["Status"] = df_ts["Status"].map(vi_status)
+                    df_ts = df_ts.rename(columns={
+                        "Tab": "Tên bảng", "Role": "Vai trò", "Status": "Trạng thái",
+                        "Raw_Rows": "Dòng gốc", "Cleaned_Rows": "Dòng chuẩn hóa",
+                        "Auto_Fixed": "Tự sửa", "Errors": "Lỗi", "Exceptions": "Ngoại lệ",
+                        "Message": "Chi tiết",
+                    })
+                    st.dataframe(df_ts, width="stretch", hide_index=True)
                 else:
-                    st.caption("Chưa có thông tin trạng thái tab.")
+                    st.caption("Chưa có thông tin trạng thái bảng.")
             with t_rec:
                 if st.session_state.reconciliation_table:
                     df_rec = pd.DataFrame(st.session_state.reconciliation_table)
@@ -1169,8 +1464,8 @@ elif page == PAGES[2]:
             with t_cmp:
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.markdown("**Dữ liệu thô (Raw Data được bảo toàn)**")
-                    st.dataframe(list(st.session_state.raw_tabs.values())[0].head(10), width="stretch", hide_index=True)
+                    st.markdown("**Dữ liệu thô (Dữ liệu gốc được bảo toàn)**")
+                    show_df_preview(list(st.session_state.raw_tabs.values())[0].head(10), width="stretch", hide_index=True)
                 with c2:
                     st.markdown("**Dữ liệu đã chuẩn hóa**")
                     norm_tx = (st.session_state.normalized_data or {}).get("Normalized_Transactions")
@@ -1184,17 +1479,41 @@ elif page == PAGES[2]:
                         cols = [c for c in priority if c in norm_tx.columns] + [
                             c for c in norm_tx.columns if c not in priority and not c.startswith("Raw_") and c not in hidden
                         ]
-                        st.dataframe(norm_tx[cols].head(10), width="stretch", hide_index=True)
+                        view_norm = norm_tx[cols].head(10).copy()
+                        if "Campaign_Data_Status" in view_norm.columns:
+                            view_norm["Campaign_Data_Status"] = view_norm["Campaign_Data_Status"].replace({
+                                "AVAILABLE": "Có dữ liệu", "MISSING_SOURCE_DATA": "Thiếu ở nguồn",
+                            })
+                        view_norm = view_norm.rename(columns={
+                            "Order_ID": "Mã đơn hàng", "Order_Value": "Doanh thu thuần", "Gross_Sales": "Doanh thu gộp",
+                            "COGS": "Giá vốn (COGS)", "Source_Profit": "Lợi nhuận gộp", "Quantity": "Số lượng",
+                            "Unit_Price": "Đơn giá", "Discount_Rate": "Tỷ lệ giảm", "Discount_Amount": "Tiền giảm giá",
+                            "Campaign_List_Str": "Danh sách chiến dịch", "Campaign_Data_Status": "Trạng thái chiến dịch",
+                            "Channel": "Kênh bán", "Return_Status": "Hoàn trả", "Shipping_Days": "Số ngày giao",
+                            "Payment_Method": "Thanh toán", "Customer_Satisfaction": "Hài lòng KH", "Order_Date": "Ngày đặt hàng",
+                        })
+                        show_df_preview(view_norm, width="stretch", hide_index=True)
                     else:
-                        st.caption("Chưa có bảng Normalized_Transactions hợp lệ.")
+                        st.caption("Chưa có bảng dữ liệu chuẩn hóa hợp lệ.")
             with t_log:
                 if st.session_state.cleaning_errors:
-                    show_df_preview(pd.DataFrame(st.session_state.cleaning_errors), width="stretch", hide_index=True)
+                    df_err = pd.DataFrame(st.session_state.cleaning_errors).rename(columns={
+                        "Tab": "Tên bảng", "Row_Index": "Dòng", "Order_ID": "Mã đơn",
+                        "Field": "Trường dữ liệu", "Error_Type": "Loại lỗi", "Severity": "Mức độ",
+                        "Raw_Value": "Giá trị gốc", "Action_Taken": "Xử lý", "Description": "Mô tả chi tiết",
+                    })
+                    show_df_preview(df_err, width="stretch", hide_index=True)
                 else:
                     st.success("Không ghi nhận cảnh báo nào.")
             with t_audit:
                 if st.session_state.audit_log:
-                    show_df_preview(pd.DataFrame(st.session_state.audit_log), width="stretch", hide_index=True)
+                    df_au = pd.DataFrame(st.session_state.audit_log).rename(columns={
+                        "Tab": "Tên bảng", "Column": "Cột", "Row_Index": "Dòng",
+                        "Record_ID": "Mã bản ghi", "Raw_Value": "Giá trị ban đầu",
+                        "Cleaned_Value": "Giá trị sau xử lý", "Reason": "Lý do thay đổi",
+                        "Method": "Phương pháp", "Timestamp": "Thời điểm",
+                    })
+                    show_df_preview(df_au, width="stretch", hide_index=True)
                 else:
                     st.caption("Không có thay đổi tự động nào được ghi nhận.")
 

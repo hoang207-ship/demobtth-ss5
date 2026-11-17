@@ -111,6 +111,6 @@ assert int(q_big["Total_Net_Sales_VND"]) == 430658320000
 assert int(q_big["Total_COGS_VND"]) == 372798218000
 assert int(q_big["Total_Profit_VND"]) == 57860102000
 tx_big = norm_big["Normalized_Transactions"]
-for dim in ["Extra_Region", "Extra_City", "Extra_Segment", "Extra_Category", "Extra_Subcategory", "Extra_Product_Name"]:
+for dim in ["Region", "Product_Name", "Extra_City", "Extra_Segment", "Extra_Category", "Extra_Subcategory"]:
     assert dim in tx_big.columns, f"Missing preserved dimension {dim}"
 print(f"[PASS] 15,000x23 sales_data benchmark in {elapsed:.2f}s | Net={q_big['Total_Net_Sales_VND']:,.0f} | COGS={q_big['Total_COGS_VND']:,.0f} | Profit={q_big['Total_Profit_VND']:,.0f} | Errors=0 | AuditLog=0")
