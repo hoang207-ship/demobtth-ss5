@@ -15,6 +15,9 @@ from schema_mapper import (
     infer_column_semantics,
 )
 
+MAX_ROW_LIMIT = 20000
+MAX_DETAILED_AUDIT_ENTRIES = 2000
+
 
 def excel_col_letter(idx: int) -> str:
     """Chuyển chỉ số cột 0-based thành ký tự cột Excel (0 -> A, 5 -> F)."""
@@ -676,10 +679,19 @@ class DataCleaner:
     - ĐỐI CHIẾU TRƯỚC VÀ SAU: Kiểm tra 6 bất biến (Invariants) bắt buộc trước khi cho phép tiếp tục.
     """
 
-    def __init__(self, raw_tabs: Dict[str, pd.DataFrame], tab_classification: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        raw_tabs: Dict[str, pd.DataFrame],
+        tab_classification: Optional[Dict[str, Any]] = None,
+        max_row_limit: int = MAX_ROW_LIMIT,
+        quota_policy: str = "WARN_AND_QUARANTINE",
+    ):
         self.raw_tabs = {k: v.copy(deep=True) for k, v in raw_tabs.items()}
         self.run_id = f"RUN-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(uuid.uuid4())[:4].upper()}"
         self.mapper = AutoSchemaMapper()
+        self.max_row_limit = max(1, int(max_row_limit or MAX_ROW_LIMIT))
+        self.quota_policy = str(quota_policy or "WARN_AND_QUARANTINE").strip().upper()
+        self.quarantine_df: pd.DataFrame = pd.DataFrame()
 
         if tab_classification:
             self.classification = tab_classification
@@ -707,6 +719,8 @@ class DataCleaner:
         method: str,
     ) -> None:
         """Ghi nhận mọi thay đổi hoặc phát hiện trong quá trình làm sạch vào Audit Log."""
+        if row_idx > 0 and len(self.audit_log) >= MAX_DETAILED_AUDIT_ENTRIES:
+            return
         self.audit_log.append({
             "Tab": tab,
             "Column": column,
@@ -794,6 +808,11 @@ class DataCleaner:
         status_info["Message"] = f"Đã làm sạch {len(df)} dòng (tự sửa {auto_fixed}, thiếu {missing_cnt}, trùng {dup_cnt})"
         return {"cleaned_df": df, "auto_fixed": auto_fixed, "missing": missing_cnt, "duplicates": dup_cnt, "warnings": warnings_cnt}
 
+    def clean_and_audit(self) -> Tuple[bool, Dict[str, Any], Dict[str, Any], List[Dict[str, Any]]]:
+        """Wrapper tương thích ngược trả về 4 phần tử (can_proceed, normalized_data, quality_summary, errors_log)."""
+        can_proceed, norm_data, quality_summary, errors_log, _ = self.clean_and_normalize()
+        return can_proceed, norm_data, quality_summary, errors_log
+
     def clean_and_normalize(self) -> Tuple[bool, Dict[str, Any], Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Thực thi quy trình làm sạch và chuẩn hóa toàn bộ các Tab.
@@ -804,10 +823,12 @@ class DataCleaner:
         self.audit_log = []
         self.mapping_summary = []
         self.reconciliation_table = []
+        self.quarantine_df = pd.DataFrame()
         self.normalized_data = {
             "Normalized_Transactions": None,
             "Normalized_Returns": None,
             "Normalized_Campaign_Costs": None,
+            "Quarantined_Records": pd.DataFrame(),
         }
 
         role_to_tab = self.classification.get("role_to_tab", {})
@@ -836,6 +857,9 @@ class DataCleaner:
         missing_fields_count = 0
         duplicate_rows_count = 0
         tabs_failed_count = 0
+        quota_exceeded = False
+        raw_tx_count_orig = 0
+        excess_rows_count = 0
 
         processing_mode = "STANDARD"
         sum_src_net_sales = 0.0
@@ -870,13 +894,97 @@ class DataCleaner:
                         "Description": f"Tab '{tx_tab_name}' không có dòng dữ liệu nào."
                     })
                 else:
-                    mapping_info = self.mapper.map_columns(list(raw_tx_df.columns), target_tab="Transactions", df=raw_tx_df)
+                    raw_tx_count_orig = len(raw_tx_df)
+                    working_tx_df = raw_tx_df
+                    tx_auto_fixed = 0
+                    tx_errors = 0
+                    tx_exceptions = 0
+
+                    # Chốt chặn Quota & Khu Cách Ly Dữ Liệu (MAX_ROW_LIMIT)
+                    if raw_tx_count_orig > self.max_row_limit:
+                        quota_exceeded = True
+                        excess_rows_count = raw_tx_count_orig - self.max_row_limit
+                        warning_count += 1
+                        tx_errors += 1
+                        if self.quota_policy == "ALLOW_ALL_ROWS":
+                            working_tx_df = raw_tx_df
+                            self.quarantine_df = pd.DataFrame()
+                            self.normalized_data["Quarantined_Records"] = pd.DataFrame()
+                            self.errors_log.append({
+                                "Tab": tx_tab_name, "Row_Index": self.max_row_limit + 1, "Order_ID": "QUOTA-OVERRIDE",
+                                "Field": "ALL", "Error_Type": "QUOTA_EXCEEDED_OVERRIDE", "Severity": "MEDIUM",
+                                "Raw_Value": f"{raw_tx_count_orig:,} / {self.max_row_limit:,} dòng",
+                                "Action_Taken": f"Cho phép xử lý ngoại lệ toàn bộ {raw_tx_count_orig:,} dòng",
+                                "Description": f"File vượt ngưỡng MAX_ROW_LIMIT ({raw_tx_count_orig:,} / {self.max_row_limit:,} dòng); đã kích hoạt ngoại lệ xử lý toàn bộ.",
+                            })
+                            self.exceptions_view.append({
+                                "Order_ID": f"QUOTA-OVERRIDE-{raw_tx_count_orig}",
+                                "Campaign_ID": "GLOBAL_QUOTA",
+                                "Error_Type": "QUOTA_OVERRIDE_APPROVED",
+                                "Raw_Value": f"{raw_tx_count_orig:,} / {self.max_row_limit:,} dòng",
+                                "Normalized_Value": f"Đã xử lý toàn bộ {raw_tx_count_orig:,} dòng",
+                                "Severity": "MEDIUM",
+                                "Error_Description": f"Vượt định mức kiểm toán ({raw_tx_count_orig:,} / {self.max_row_limit:,} dòng) — được phép xử lý ngoại lệ toàn phần.",
+                                "Proposed_Action": "Giám sát hiệu năng và đối soát chứng từ tổng hợp",
+                                "Approval_Status": "APPROVED",
+                                "Reviewer": "Admin (Quota Override)",
+                                "Review_Time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "Note": f"Chấp thuận xử lý ngoại lệ toàn bộ {raw_tx_count_orig:,} dòng vượt ngưỡng {self.max_row_limit:,}.",
+                            })
+                            self._record_audit(
+                                tx_tab_name, "ROW_LIMIT", 0, "QUOTA-OVERRIDE",
+                                f"{raw_tx_count_orig} rows", f"{raw_tx_count_orig} rows",
+                                f"Vượt MAX_ROW_LIMIT ({self.max_row_limit:,}) — xử lý toàn bộ theo chế độ ngoại lệ",
+                                "QUOTA_OVERRIDE_ALLOWED",
+                            )
+                        else:
+                            self.quarantine_df = raw_tx_df.iloc[self.max_row_limit:].copy(deep=True)
+                            self.normalized_data["Quarantined_Records"] = self.quarantine_df
+                            working_tx_df = raw_tx_df.iloc[:self.max_row_limit].copy(deep=True)
+                            exception_count += 1
+                            tx_exceptions += 1
+                            auto_q_status = "APPROVED" if self.quota_policy == "TRUNCATE_TO_QUOTA" else "PENDING_REVIEW"
+                            self.errors_log.append({
+                                "Tab": tx_tab_name, "Row_Index": self.max_row_limit + 1,
+                                "Order_ID": f"QUOTA-OVERFLOW-{self.max_row_limit + 1}..{raw_tx_count_orig}",
+                                "Field": "ALL", "Error_Type": "QUOTA_EXCEEDED_QUARANTINE", "Severity": "HIGH",
+                                "Raw_Value": f"{raw_tx_count_orig:,} dòng (vượt {excess_rows_count:,} dòng)",
+                                "Action_Taken": f"Giữ {self.max_row_limit:,} dòng đầu; cách ly {excess_rows_count:,} dòng dư vào Quarantine",
+                                "Description": f"CẢNH BÁO QUOTA ({raw_tx_count_orig:,} / {self.max_row_limit:,} dòng): Đã tách {excess_rows_count:,} dòng vượt ngưỡng sang Khu Cách Ly (Data Quarantine).",
+                            })
+                            self.exceptions_view.append({
+                                "Order_ID": f"QUOTA-OVERFLOW-{self.max_row_limit + 1}..{raw_tx_count_orig}",
+                                "Campaign_ID": "GLOBAL_QUOTA",
+                                "Error_Type": "QUOTA_EXCEEDED_QUARANTINE",
+                                "Raw_Value": f"{raw_tx_count_orig:,} / {self.max_row_limit:,} dòng",
+                                "Normalized_Value": f"Giữ {self.max_row_limit:,} dòng | Cách ly {excess_rows_count:,} dòng",
+                                "Severity": "HIGH",
+                                "Error_Description": f"CẢNH BÁO QUOTA ({raw_tx_count_orig:,} / {self.max_row_limit:,} dòng): Đã tự động cách ly {excess_rows_count:,} dòng vượt định mức sang Exceptions/Quarantine.",
+                                "Proposed_Action": f"Cắt ngọn về {self.max_row_limit:,} dòng hợp lệ hoặc Phê duyệt xử lý ngoại lệ toàn bộ {raw_tx_count_orig:,} dòng",
+                                "Approval_Status": auto_q_status,
+                                "Reviewer": "Admin (Auto-Truncate)" if auto_q_status == "APPROVED" else "Chưa duyệt",
+                                "Review_Time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") if auto_q_status == "APPROVED" else "N/A",
+                                "Note": f"Tự động cắt ngọn về {self.max_row_limit:,} dòng & cách ly {excess_rows_count:,} dòng dư." if auto_q_status == "APPROVED" else "",
+                            })
+                            self._record_audit(
+                                tx_tab_name, "ROW_LIMIT", 0, "QUOTA-QUARANTINE",
+                                f"{raw_tx_count_orig} rows", f"{len(working_tx_df)} active / {excess_rows_count} quarantined",
+                                f"Vượt MAX_ROW_LIMIT ({self.max_row_limit:,}) — cách ly {excess_rows_count:,} dòng dư",
+                                "QUOTA_QUARANTINE",
+                            )
+
+                    mapping_info = self.mapper.map_columns(list(working_tx_df.columns), target_tab="Transactions", df=working_tx_df)
                     self.mapping_summary.extend(mapping_info["mapping_table"])
 
                     col_map = mapping_info["mapped_dict"]
                     rev_map = mapping_info["reverse_dict"]
                     unmapped_cols = mapping_info.get("unmapped_columns", [])
-                    col_idx_map = {col: i for i, col in enumerate(raw_tx_df.columns)}
+                    col_idx_map = {col: i for i, col in enumerate(working_tx_df.columns)}
+                    extra_col_specs = [
+                        (col, normalize_column_name(col), f"Extra_{col}")
+                        for col in working_tx_df.columns
+                        if col not in col_map
+                    ]
 
                     # Ghi nhận các cột không có tiêu đề (Unnamed) có chứa dữ liệu tài chính/ngày tháng vào Audit Log
                     for u_col, prof in mapping_info.get("column_profiles", {}).items():
@@ -898,7 +1006,7 @@ class DataCleaner:
                         order_val_col = gross_sales_col
 
                     if not order_val_col:
-                        fallback_col = find_best_fallback_value_column(raw_tx_df, excluded_cols=set(col_map.keys()))
+                        fallback_col = find_best_fallback_value_column(working_tx_df, excluded_cols=set(col_map.keys()))
                         if fallback_col:
                             order_val_col = fallback_col
                             col_map[fallback_col] = "Order_Value"
@@ -934,8 +1042,8 @@ class DataCleaner:
                     product_col = rev_map.get("Product_Name")
                     region_col = rev_map.get("Region")
 
-                    if id_col and id_col in raw_tx_df.columns:
-                        val_counts = raw_tx_df[id_col].dropna().astype(str).str.strip().value_counts()
+                    if id_col and id_col in working_tx_df.columns:
+                        val_counts = working_tx_df[id_col].dropna().astype(str).str.strip().value_counts()
                         dup_ids = set(val_counts[val_counts > 1].index) - {"", "nan", "None", "null"}
                     else:
                         dup_ids = set()
@@ -944,11 +1052,8 @@ class DataCleaner:
                     seen_dup_ids = set()
                     seen_order_ids = set()
                     empty_rows_skipped = 0
-                    tx_auto_fixed = 0
-                    tx_errors = 0
-                    tx_exceptions = 0
 
-                    for idx, r in enumerate(raw_tx_df.to_dict("records")):
+                    for idx, r in enumerate(working_tx_df.to_dict("records")):
                         # Bỏ qua dòng trắng hoàn toàn (tất cả cột đều rỗng/NaN)
                         if all(clean_text_value(v) is None for v in r.values()):
                             empty_rows_skipped += 1
@@ -1051,7 +1156,7 @@ class DataCleaner:
 
                         # 1.3 Chuẩn hóa Doanh thu gộp (Gross_Sales)
                         raw_gross_val = r.get(gross_sales_col) if gross_sales_col else None
-                        clean_gross_val, gross_stat, gross_desc = parse_currency_value(raw_gross_val) if raw_gross_val is not None else (actual_norm_val, "VALID", "")
+                        clean_gross_val, gross_stat, gross_desc = parse_currency_value(raw_gross_val) if raw_gross_val is not None else (None, "NOT_PROVIDED", "")
                         if gross_stat == "AUTO_FIXED":
                             auto_fixed_count += 1
                             tx_auto_fixed += 1
@@ -1282,6 +1387,23 @@ class DataCleaner:
                         fallback_disc = (actual_gross - actual_norm_val) if (actual_gross is not None and actual_norm_val is not None) else 0.0
                         clean_disc_amt, _, _ = parse_currency_value(r.get(disc_amount_col)) if disc_amount_col else (fallback_disc, "VALID", "")
 
+                        # Bổ sung tính Doanh thu gộp (Gross_Sales) khi nguồn không có sẵn cột Gross_Sales riêng
+                        if clean_gross_val is None and actual_norm_val is not None:
+                            computed_gross = actual_norm_val
+                            if disc_amount_col and clean_disc_amt is not None and clean_disc_amt > 0:
+                                computed_gross = round(actual_norm_val + clean_disc_amt, 2)
+                            elif disc_col and (0.0 < clean_disc_rate < 1.0):
+                                computed_gross = round(actual_norm_val / (1.0 - clean_disc_rate), 2)
+                                if not disc_amount_col:
+                                    clean_disc_amt = round(computed_gross - actual_norm_val, 2)
+                            elif qty_col and unit_price_col and clean_unit_price is not None and (clean_qty * clean_unit_price) > actual_norm_val:
+                                computed_gross = round(clean_qty * clean_unit_price, 2)
+                            if computed_gross != actual_gross:
+                                delta_g = computed_gross - (actual_gross if actual_gross is not None else 0.0)
+                                actual_gross = computed_gross
+                                sum_norm_gross_sales += delta_g
+                                sum_src_gross_sales += delta_g
+
                         clean_return_status = clean_text_value(r.get(return_status_col) if return_status_col else None) or "No"
                         parsed_ship_days, _, _ = parse_numeric_value(r.get(ship_days_col)) if ship_days_col else (0.0, "VALID", "")
                         clean_ship_days = int(parsed_ship_days) if parsed_ship_days is not None else 0
@@ -1349,34 +1471,33 @@ class DataCleaner:
                             "Run_ID": self.run_id
                         }
 
-                        # Pre-profile Extra columns once outside loop? Compute safely per cell:
-                        for col in raw_tx_df.columns:
-                            if col not in col_map and f"Extra_{col}" not in row_dict:
+                        # Cột mở rộng chưa ánh xạ (precompute col name ngoài vòng lặp)
+                        for col, col_l, extra_key in extra_col_specs:
+                            if extra_key not in row_dict:
                                 raw_extra = r.get(col)
-                                col_l = normalize_column_name(col)
                                 is_d_col = any(k in col_l for k in ["ngay", "date", "time", "created", "thang"])
                                 if raw_extra is None or (isinstance(raw_extra, float) and pd.isna(raw_extra)):
-                                    row_dict[f"Extra_{col}"] = None
+                                    row_dict[extra_key] = None
                                 elif is_d_col:
                                     d_val, d_st, _ = parse_date_value(raw_extra)
                                     if d_st == "AUTO_FIXED" and d_val is not None:
-                                        row_dict[f"Extra_{col}"] = d_val
+                                        row_dict[extra_key] = d_val
                                         auto_fixed_count += 1
                                         tx_auto_fixed += 1
-                                        self._record_audit(tx_tab_name, f"Extra_{col}", idx + 1, clean_order_id, raw_extra, d_val, "Chuẩn hóa ngày cột mở rộng", "DATE_NORMALIZED")
+                                        self._record_audit(tx_tab_name, extra_key, idx + 1, clean_order_id, raw_extra, d_val, "Chuẩn hóa ngày cột mở rộng", "DATE_NORMALIZED")
                                     elif d_val is not None:
-                                        row_dict[f"Extra_{col}"] = d_val
+                                        row_dict[extra_key] = d_val
                                     else:
-                                        row_dict[f"Extra_{col}"] = clean_text_value(raw_extra)
+                                        row_dict[extra_key] = clean_text_value(raw_extra)
                                 elif isinstance(raw_extra, str):
                                     trimmed = clean_text_value(raw_extra)
                                     if trimmed is not None and trimmed != raw_extra:
                                         auto_fixed_count += 1
                                         tx_auto_fixed += 1
-                                        self._record_audit(tx_tab_name, f"Extra_{col}", idx + 1, clean_order_id, raw_extra, trimmed, "Loại bỏ khoảng trắng thừa cột mở rộng", "TRIM_WHITESPACE")
-                                    row_dict[f"Extra_{col}"] = trimmed
+                                        self._record_audit(tx_tab_name, extra_key, idx + 1, clean_order_id, raw_extra, trimmed, "Loại bỏ khoảng trắng thừa cột mở rộng", "TRIM_WHITESPACE")
+                                    row_dict[extra_key] = trimmed
                                 else:
-                                    row_dict[f"Extra_{col}"] = raw_extra
+                                    row_dict[extra_key] = raw_extra
 
                         norm_rows.append(row_dict)
 
@@ -1387,7 +1508,7 @@ class DataCleaner:
                     diff_cogs = abs(sum_src_cost - sum_norm_cogs)
                     diff_profit = abs(sum_src_profit - sum_norm_profit)
                     diff_gross = abs(sum_src_gross_sales - sum_norm_gross_sales)
-                    rows_match = ((len(raw_tx_df) - empty_rows_skipped) == len(norm_rows))
+                    rows_match = ((len(working_tx_df) - empty_rows_skipped) == len(norm_rows))
 
                     self.reconciliation_table = [
                         {
@@ -1429,13 +1550,23 @@ class DataCleaner:
                         {
                             "Metric": "Tổng Số Bản Ghi (Record Count)",
                             "Source_Field": "Raw Records Count",
-                            "Source_Value": f"{len(raw_tx_df)} dòng",
+                            "Source_Value": f"{len(working_tx_df)} dòng",
                             "Normalized_Field": "Normalized Records Count",
                             "Normalized_Value": f"{len(norm_rows)} dòng",
-                            "Difference": f"{len(raw_tx_df) - len(norm_rows)} dòng",
+                            "Difference": f"{len(working_tx_df) - len(norm_rows)} dòng",
                             "Status": "MATCH (Khớp 100%)" if rows_match else "MISMATCH (Mất bản ghi)"
                         }
                     ]
+                    if quota_exceeded:
+                        self.reconciliation_table.append({
+                            "Metric": "Khu Cách Ly Vượt Ngưỡng (Data Quarantine)",
+                            "Source_Field": f"MAX_ROW_LIMIT = {self.max_row_limit:,}",
+                            "Source_Value": f"{raw_tx_count_orig:,} dòng gốc",
+                            "Normalized_Field": "Quarantined_Records",
+                            "Normalized_Value": f"{len(self.quarantine_df):,} dòng cách ly",
+                            "Difference": f"{excess_rows_count:,} dòng vượt ngưỡng",
+                            "Status": f"CẢNH BÁO QUOTA ({raw_tx_count_orig:,} / {self.max_row_limit:,} dòng)"
+                        })
 
                     if sum_src_net_sales > 0 and sum_norm_order_value == 0:
                         blocking_count += 1
@@ -1463,13 +1594,20 @@ class DataCleaner:
                     tx_status["Exceptions"] = tx_exceptions
                     if blocking_count > 0:
                         tx_status["Status"] = "FAILED"
+                    elif quota_exceeded:
+                        tx_status["Status"] = "QUOTA_WARNING"
                     elif tx_exceptions > 0:
                         tx_status["Status"] = "NEEDS_APPROVAL"
                     elif tx_errors > 0:
                         tx_status["Status"] = "WARNING"
                     else:
                         tx_status["Status"] = "SUCCESS"
-                    tx_status["Message"] = f"Chuẩn hóa {len(norm_rows)} giao dịch (tự sửa {tx_auto_fixed}, ngoại lệ {tx_exceptions})"
+                    tx_status["Message"] = (
+                        f"CẢNH BÁO QUOTA ({raw_tx_count_orig:,} / {self.max_row_limit:,} dòng) • "
+                        f"Đã chuẩn hóa {len(norm_rows):,} dòng (cách ly {len(self.quarantine_df):,} dòng)"
+                        if quota_exceeded
+                        else f"Chuẩn hóa {len(norm_rows)} giao dịch (tự sửa {tx_auto_fixed}, ngoại lệ {tx_exceptions})"
+                    )
             except Exception as exc:
                 blocking_count += 1
                 tabs_failed_count += 1
@@ -1670,10 +1808,19 @@ class DataCleaner:
         critical_issues = len([e for e in self.errors_log if e["Severity"] == "CRITICAL"])
 
         quality_score = max(0.0, min(100.0, 100.0 - (total_issues / max(1, total_records)) * 40.0))
+        if quota_exceeded:
+            quality_score = min(95.0, quality_score)
         can_proceed = (critical_issues == 0 and clean_tx_count > 0 and (sum_norm_order_value > 0 or processing_mode == "GENERAL_TABULAR"))
+        quota_status_text = (
+            f"CẢNH BÁO QUOTA ({raw_tx_count_orig:,} / {self.max_row_limit:,} dòng)"
+            if quota_exceeded
+            else "TRONG ĐỊNH MỨC"
+        )
 
         if not can_proceed or critical_issues > 0 or tabs_failed_count > 0:
             overall_status = "FAILED"
+        elif quota_exceeded:
+            overall_status = "QUOTA_WARNING"
         elif len(self.exceptions_view) > 0:
             overall_status = "NEEDS_APPROVAL"
         elif total_issues > 0 or missing_fields_count > 0 or duplicate_rows_count > 0 or any(
@@ -1703,6 +1850,13 @@ class DataCleaner:
             "Data_Quality_Score": round(quality_score, 1),
             "Can_Proceed_Process": can_proceed,
             "Status": overall_status,
+            "Quota_Exceeded": quota_exceeded,
+            "Max_Row_Limit": self.max_row_limit,
+            "Raw_Transactions_Count": raw_tx_count_orig,
+            "Excess_Rows_Count": excess_rows_count,
+            "Quarantined_Rows_Count": len(self.quarantine_df),
+            "Quota_Policy": self.quota_policy,
+            "Quota_Status_Text": quota_status_text,
             "Has_Returns_Data": self.normalized_data["Normalized_Returns"] is not None,
             "Has_Costs_Data": self.normalized_data["Normalized_Campaign_Costs"] is not None,
             "Campaign_Data_Status": campaign_data_status,

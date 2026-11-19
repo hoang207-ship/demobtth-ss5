@@ -3,7 +3,7 @@ from streamlit.testing.v1 import AppTest
 PAGES = [
     "Overview (Tổng quan)", "Kết Nối Google Sheets", "Data Cleaning & Audit",
     "Process Workflow (6 Bước)", "Phê Duyệt Exceptions", "Verification Suite",
-    "Báo Cáo Reports & Export", "Cài Đặt Settings",
+    "Xuất Báo cáo Quản trị (Reports & Export)", "Cấu hình Hệ thống & Định mức (Settings)",
 ]
 
 

@@ -25,7 +25,17 @@ assert not at.exception, at.exception
 exc_reply = at.session_state["chat_history"][-1]["content"]
 assert "Ngoại lệ chờ duyệt" in exc_reply, exc_reply
 
-# 3. Clear conversation
+# 3. Ask open general-knowledge / ChatGPT brain question via ai_chat_form
+chat_in = [ti for ti in at.text_input if ti.label == "Hỏi Trợ lý AI..."][0]
+chat_in.input("Thủ đô của Nhật Bản là gì? Trả lời ngắn gọn.")
+send_btn = [b for b in at.button if "Gửi câu hỏi" in str(b.label)][0]
+send_btn.click().run()
+assert not at.exception, at.exception
+gen_reply = at.session_state["chat_history"][-1]["content"]
+assert len(gen_reply.strip()) > 0
+print("General Q reply:", gen_reply[:160])
+
+# 4. Clear conversation
 [b for b in at.button if b.key == "ai_clear"][0].click().run()
 assert not at.exception, at.exception
 assert len(at.session_state["chat_history"]) == 1
